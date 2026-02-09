@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { storage } from '@/lib/storage';
-import { RoomExpense, ExpenseCategory } from '@/lib/types';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { supabase } from '@/integrations/supabase/client';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -10,77 +9,89 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Plus, Pencil, Trash2, Search } from 'lucide-react';
-import { v4 as uuid } from 'uuid';
 import { useToast } from '@/hooks/use-toast';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-const categories: ExpenseCategory[] = ['Food', 'Rent', 'Electricity', 'Internet', 'Misc'];
+const categories = ['Food', 'Rent', 'Electricity', 'Internet', 'Misc'] as const;
 
 const RoomExpenses = () => {
-  const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  const { role, profile } = useAuth();
+  const isAdmin = role === 'admin';
   const { toast } = useToast();
-  const [expenses, setExpenses] = useState(storage.getRoomExpenses());
+  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<RoomExpense | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filterCat, setFilterCat] = useState<string>('all');
 
-  // Form
   const [date, setDate] = useState('');
-  const [category, setCategory] = useState<ExpenseCategory>('Food');
+  const [category, setCategory] = useState<string>('Food');
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [paidBy, setPaidBy] = useState('');
 
-  const resetForm = () => { setDate(''); setCategory('Food'); setAmount(''); setDescription(''); setPaidBy(''); setEditing(null); };
+  const adminId = isAdmin ? profile?.id : profile?.admin_id;
 
-  const save = (e: React.FormEvent) => {
+  const { data: expenses = [] } = useQuery({
+    queryKey: ['room_expenses', adminId],
+    queryFn: async () => {
+      if (!adminId) return [];
+      const { data } = await supabase.from('room_expenses').select('*').eq('admin_id', adminId).order('created_at', { ascending: false });
+      return data ?? [];
+    },
+    enabled: !!adminId,
+  });
+
+  const resetForm = () => { setDate(''); setCategory('Food'); setAmount(''); setDescription(''); setPaidBy(''); setEditingId(null); };
+
+  const save = async (e: React.FormEvent) => {
     e.preventDefault();
-    const exp: RoomExpense = {
-      id: editing?.id || uuid(),
-      date, category, amount: Number(amount), description, paidBy,
-      splitAmong: [], createdAt: editing?.createdAt || new Date().toISOString(),
-    };
-    let updated: RoomExpense[];
-    if (editing) {
-      updated = expenses.map(x => x.id === editing.id ? exp : x);
+    if (!profile) return;
+
+    if (editingId) {
+      const { error } = await supabase.from('room_expenses')
+        .update({ date, category, amount: Number(amount), description, paid_by: paidBy })
+        .eq('id', editingId);
+      if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
+      toast({ title: 'Updated' });
     } else {
-      updated = [...expenses, exp];
+      const { error } = await supabase.from('room_expenses')
+        .insert({ admin_id: profile.id, date, category, amount: Number(amount), description, paid_by: paidBy });
+      if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
       // Auto-deduct from purse
-      const purse = storage.getPurseTransactions();
-      purse.push({ id: uuid(), type: 'outflow', amount: Number(amount), date, description: `Room: ${description || category}`, createdAt: new Date().toISOString() });
-      storage.setPurseTransactions(purse);
+      await supabase.from('purse_transactions')
+        .insert({ admin_id: profile.id, type: 'outflow', amount: Number(amount), date, description: `Room: ${description || category}` });
+      toast({ title: 'Added' });
     }
-    storage.setRoomExpenses(updated);
-    setExpenses(updated);
+    queryClient.invalidateQueries({ queryKey: ['room_expenses'] });
+    queryClient.invalidateQueries({ queryKey: ['purse_transactions'] });
     setOpen(false);
     resetForm();
-    toast({ title: editing ? 'Updated' : 'Added', description: `Expense ${editing ? 'updated' : 'added'} successfully.` });
   };
 
-  const remove = (id: string) => {
-    const updated = expenses.filter(e => e.id !== id);
-    storage.setRoomExpenses(updated);
-    setExpenses(updated);
-    toast({ title: 'Deleted', description: 'Expense removed.' });
+  const remove = async (id: string) => {
+    const { error } = await supabase.from('room_expenses').delete().eq('id', id);
+    if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
+    queryClient.invalidateQueries({ queryKey: ['room_expenses'] });
+    toast({ title: 'Deleted' });
   };
 
-  const startEdit = (exp: RoomExpense) => {
-    setEditing(exp); setDate(exp.date); setCategory(exp.category);
-    setAmount(String(exp.amount)); setDescription(exp.description); setPaidBy(exp.paidBy);
+  const startEdit = (exp: any) => {
+    setEditingId(exp.id); setDate(exp.date); setCategory(exp.category);
+    setAmount(String(exp.amount)); setDescription(exp.description || ''); setPaidBy(exp.paid_by || '');
     setOpen(true);
   };
 
-  const filtered = expenses.filter(e => {
-    const matchSearch = !search || e.description.toLowerCase().includes(search.toLowerCase()) || e.category.toLowerCase().includes(search.toLowerCase());
+  const filtered = expenses.filter((e: any) => {
+    const matchSearch = !search || (e.description || '').toLowerCase().includes(search.toLowerCase()) || e.category.toLowerCase().includes(search.toLowerCase());
     const matchCat = filterCat === 'all' || e.category === filterCat;
     return matchSearch && matchCat;
-  }).reverse();
+  });
 
-  const monthlyTotal = expenses.filter(e => {
+  const monthlyTotal = expenses.filter((e: any) => {
     const d = new Date(e.date); const n = new Date();
     return d.getMonth() === n.getMonth() && d.getFullYear() === n.getFullYear();
-  }).reduce((s, e) => s + e.amount, 0);
+  }).reduce((s: number, e: any) => s + Number(e.amount), 0);
 
   return (
     <div className="space-y-6">
@@ -95,12 +106,12 @@ const RoomExpenses = () => {
               <Button><Plus className="w-4 h-4 mr-1" />Add Expense</Button>
             </DialogTrigger>
             <DialogContent>
-              <DialogHeader><DialogTitle>{editing ? 'Edit' : 'Add'} Expense</DialogTitle></DialogHeader>
+              <DialogHeader><DialogTitle>{editingId ? 'Edit' : 'Add'} Expense</DialogTitle></DialogHeader>
               <form onSubmit={save} className="space-y-4">
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-2"><Label>Date</Label><Input type="date" value={date} onChange={e => setDate(e.target.value)} required /></div>
                   <div className="space-y-2"><Label>Category</Label>
-                    <Select value={category} onValueChange={v => setCategory(v as ExpenseCategory)}>
+                    <Select value={category} onValueChange={setCategory}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>{categories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
                     </Select>
@@ -111,7 +122,7 @@ const RoomExpenses = () => {
                   <div className="space-y-2"><Label>Paid By</Label><Input value={paidBy} onChange={e => setPaidBy(e.target.value)} /></div>
                 </div>
                 <div className="space-y-2"><Label>Description</Label><Textarea value={description} onChange={e => setDescription(e.target.value)} /></div>
-                <Button className="w-full" type="submit">{editing ? 'Update' : 'Add'} Expense</Button>
+                <Button className="w-full" type="submit">{editingId ? 'Update' : 'Add'} Expense</Button>
               </form>
             </DialogContent>
           </Dialog>
@@ -135,7 +146,7 @@ const RoomExpenses = () => {
       <div className="space-y-3">
         {filtered.length === 0 ? (
           <Card><CardContent className="py-8 text-center text-muted-foreground">No expenses found.</CardContent></Card>
-        ) : filtered.map(e => (
+        ) : filtered.map((e: any) => (
           <Card key={e.id}>
             <CardContent className="flex items-center justify-between p-4">
               <div className="flex-1 min-w-0">
@@ -143,10 +154,10 @@ const RoomExpenses = () => {
                   <span className="font-medium text-foreground">{e.description || e.category}</span>
                   <span className="text-xs px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground">{e.category}</span>
                 </div>
-                <p className="text-xs text-muted-foreground mt-0.5">{e.date}{e.paidBy && ` · Paid by ${e.paidBy}`}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{e.date}{e.paid_by && ` · Paid by ${e.paid_by}`}</p>
               </div>
               <div className="flex items-center gap-3">
-                <span className="font-bold text-foreground">₹{e.amount.toLocaleString()}</span>
+                <span className="font-bold text-foreground">₹{Number(e.amount).toLocaleString()}</span>
                 {isAdmin && (
                   <div className="flex gap-1">
                     <Button variant="ghost" size="icon" onClick={() => startEdit(e)}><Pencil className="w-4 h-4" /></Button>

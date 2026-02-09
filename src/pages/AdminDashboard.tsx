@@ -1,33 +1,71 @@
 import { useAuth } from '@/contexts/AuthContext';
-import { storage } from '@/lib/storage';
+import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Receipt, Users, Wallet, MessageSquare, TrendingUp, TrendingDown } from 'lucide-react';
 import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 
 const AdminDashboard = () => {
-  const { user } = useAuth();
-  const expenses = storage.getRoomExpenses();
-  const users = storage.getUsers().filter(u => u.role === 'user' && u.adminId === user?.id);
-  const pending = users.filter(u => !u.approved);
-  const purse = storage.getPurseTransactions();
-  const messages = storage.getMessages().filter(m => m.toAdminId === user?.id);
-  const unread = messages.filter(m => !m.read).length;
+  const { profile } = useAuth();
 
-  const totalExpenses = useMemo(() => expenses.reduce((s, e) => s + e.amount, 0), [expenses]);
-  const purseBalance = useMemo(() => purse.reduce((s, t) => s + (t.type === 'inflow' ? t.amount : -t.amount), 0), [purse]);
+  const { data: expenses = [] } = useQuery({
+    queryKey: ['room_expenses', profile?.id],
+    queryFn: async () => {
+      if (!profile) return [];
+      const { data } = await supabase.from('room_expenses').select('*').eq('admin_id', profile.id).order('created_at', { ascending: false });
+      return data ?? [];
+    },
+    enabled: !!profile,
+  });
+
+  const { data: users = [] } = useQuery({
+    queryKey: ['admin_users', profile?.id],
+    queryFn: async () => {
+      if (!profile) return [];
+      const { data } = await supabase.from('profiles').select('*').eq('admin_id', profile.id);
+      return data ?? [];
+    },
+    enabled: !!profile,
+  });
+
+  const { data: purse = [] } = useQuery({
+    queryKey: ['purse_transactions', profile?.id],
+    queryFn: async () => {
+      if (!profile) return [];
+      const { data } = await supabase.from('purse_transactions').select('*').eq('admin_id', profile.id);
+      return data ?? [];
+    },
+    enabled: !!profile,
+  });
+
+  const { data: messages = [] } = useQuery({
+    queryKey: ['messages_admin', profile?.id],
+    queryFn: async () => {
+      if (!profile) return [];
+      const { data } = await supabase.from('messages').select('*').eq('to_admin_id', profile.id).order('created_at', { ascending: false });
+      return data ?? [];
+    },
+    enabled: !!profile,
+  });
+
+  const pending = users.filter((u: any) => !u.approved);
+  const unread = messages.filter((m: any) => !m.read).length;
+
+  const totalExpenses = useMemo(() => expenses.reduce((s: number, e: any) => s + Number(e.amount), 0), [expenses]);
+  const purseBalance = useMemo(() => purse.reduce((s: number, t: any) => s + (t.type === 'inflow' ? Number(t.amount) : -Number(t.amount)), 0), [purse]);
 
   const now = new Date();
-  const thisMonth = expenses.filter(e => {
+  const thisMonth = expenses.filter((e: any) => {
     const d = new Date(e.date);
     return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
   });
-  const lastMonth = expenses.filter(e => {
+  const lastMonth = expenses.filter((e: any) => {
     const d = new Date(e.date);
     const lm = new Date(now.getFullYear(), now.getMonth() - 1);
     return d.getMonth() === lm.getMonth() && d.getFullYear() === lm.getFullYear();
   });
-  const thisTotal = thisMonth.reduce((s, e) => s + e.amount, 0);
-  const lastTotal = lastMonth.reduce((s, e) => s + e.amount, 0);
+  const thisTotal = thisMonth.reduce((s: number, e: any) => s + Number(e.amount), 0);
+  const lastTotal = lastMonth.reduce((s: number, e: any) => s + Number(e.amount), 0);
   const changePercent = lastTotal ? Math.round(((thisTotal - lastTotal) / lastTotal) * 100) : 0;
 
   const stats = [
@@ -40,8 +78,8 @@ const AdminDashboard = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-foreground">Welcome back, {user?.name}</h1>
-        <p className="text-muted-foreground text-sm">Admin ID: <span className="font-mono font-semibold text-primary">{user?.id}</span></p>
+        <h1 className="text-2xl font-bold text-foreground">Welcome back, {profile?.name}</h1>
+        <p className="text-muted-foreground text-sm">Admin ID: <span className="font-mono font-semibold text-primary">{profile?.admin_code}</span></p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -67,13 +105,13 @@ const AdminDashboard = () => {
               <p className="text-sm text-muted-foreground">No expenses yet.</p>
             ) : (
               <div className="space-y-3">
-                {expenses.slice(-5).reverse().map(e => (
+                {expenses.slice(0, 5).map((e: any) => (
                   <div key={e.id} className="flex items-center justify-between text-sm">
                     <div>
                       <p className="font-medium text-foreground">{e.description || e.category}</p>
                       <p className="text-xs text-muted-foreground">{e.date} · {e.category}</p>
                     </div>
-                    <span className="font-semibold text-foreground">₹{e.amount}</span>
+                    <span className="font-semibold text-foreground">₹{Number(e.amount).toLocaleString()}</span>
                   </div>
                 ))}
               </div>
@@ -88,10 +126,10 @@ const AdminDashboard = () => {
               <p className="text-sm text-muted-foreground">No messages yet.</p>
             ) : (
               <div className="space-y-3">
-                {messages.slice(-5).reverse().map(m => (
+                {messages.slice(0, 5).map((m: any) => (
                   <div key={m.id} className="text-sm">
                     <div className="flex items-center gap-2">
-                      <span className="font-medium text-foreground">{m.fromUserName}</span>
+                      <span className="font-medium text-foreground">{m.from_user_name}</span>
                       {!m.read && <span className="w-2 h-2 rounded-full bg-primary" />}
                     </div>
                     <p className="text-muted-foreground text-xs truncate">{m.content}</p>

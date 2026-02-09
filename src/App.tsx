@@ -17,18 +17,29 @@ import Messages from "./pages/Messages";
 import Analytics from "./pages/Analytics";
 import SettingsPage from "./pages/SettingsPage";
 import NotFound from "./pages/NotFound";
+import { Loader2 } from "lucide-react";
 
 const queryClient = new QueryClient();
 
 const ProtectedRoute = ({ children, adminOnly }: { children: React.ReactNode; adminOnly?: boolean }) => {
-  const { user } = useAuth();
+  const { user, role, loading, profile } = useAuth();
+  if (loading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
   if (!user) return <Navigate to="/login" replace />;
-  if (adminOnly && user.role !== 'admin') return <Navigate to="/dashboard" replace />;
+  if (role === 'user' && !profile?.approved) return (
+    <div className="min-h-screen flex items-center justify-center bg-background p-4 text-center">
+      <div>
+        <h2 className="text-xl font-bold text-foreground mb-2">Pending Approval</h2>
+        <p className="text-muted-foreground">Your account is waiting for admin approval. Please check back later.</p>
+      </div>
+    </div>
+  );
+  if (adminOnly && role !== 'admin') return <Navigate to="/dashboard" replace />;
   return <>{children}</>;
 };
 
 const PublicRoute = ({ children }: { children: React.ReactNode }) => {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
+  if (loading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
   if (user) return <Navigate to="/dashboard" replace />;
   return <>{children}</>;
 };
@@ -41,7 +52,7 @@ const AppRoutes = () => (
     <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
       <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/room-expenses" element={<RoomExpenses />} />
-      <Route path="/personal-expenses" element={<ProtectedRoute><PersonalExpenses /></ProtectedRoute>} />
+      <Route path="/personal-expenses" element={<PersonalExpenses />} />
       <Route path="/purse" element={<ProtectedRoute adminOnly><Purse /></ProtectedRoute>} />
       <Route path="/manage-users" element={<ProtectedRoute adminOnly><ManageUsers /></ProtectedRoute>} />
       <Route path="/messages" element={<Messages />} />

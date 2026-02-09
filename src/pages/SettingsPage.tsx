@@ -5,7 +5,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 
 const SettingsPage = () => {
-  const { user } = useAuth();
+  const { profile, role } = useAuth();
   const { dark, toggle } = useTheme();
 
   return (
@@ -20,20 +20,20 @@ const SettingsPage = () => {
         <CardContent className="space-y-3">
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Name</span>
-            <span className="font-medium text-foreground">{user?.name}</span>
+            <span className="font-medium text-foreground">{profile?.name}</span>
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Email</span>
-            <span className="font-medium text-foreground">{user?.email}</span>
+            <span className="font-medium text-foreground">{profile?.email}</span>
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Role</span>
-            <span className="font-medium text-foreground capitalize">{user?.role}</span>
+            <span className="font-medium text-foreground capitalize">{role}</span>
           </div>
-          {user?.role === 'admin' && (
+          {role === 'admin' && (
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Admin ID</span>
-              <span className="font-mono font-semibold text-primary">{user?.id}</span>
+              <span className="font-mono font-semibold text-primary">{profile?.admin_code}</span>
             </div>
           )}
         </CardContent>
@@ -54,12 +54,11 @@ const SettingsPage = () => {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Data</CardTitle>
-          <CardDescription>All data is stored locally in your browser</CardDescription>
+          <CardDescription>Connected to Supabase cloud database</CardDescription>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">
-            This app uses browser localStorage for data persistence. Data is not synced across devices.
-            To enable cloud storage with real-time sync, consider connecting a backend database.
+            Your data is securely stored in the cloud and synced in real-time across all your devices.
           </p>
         </CardContent>
       </Card>
