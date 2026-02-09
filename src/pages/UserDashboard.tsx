@@ -1,9 +1,10 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Receipt, PiggyBank, Target, TrendingUp } from 'lucide-react';
+import { Receipt, PiggyBank, Target, TrendingUp,Wallet } from 'lucide-react';
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+
 
 const UserDashboard = () => {
   const { user, profile } = useAuth();
@@ -27,6 +28,19 @@ const UserDashboard = () => {
     },
     enabled: !!user,
   });
+  const { data: purse = [] } = useQuery({
+  queryKey: ['purse_transactions_user', profile?.admin_id],
+  queryFn: async () => {
+    if (!profile?.admin_id) return [];
+    const { data } = await supabase
+      .from('purse_transactions')
+      .select('*')
+      .eq('admin_id', profile.admin_id);
+    return data ?? [];
+  },
+  enabled: !!profile?.admin_id,
+});
+
 
   const totalRoom = useMemo(() => roomExpenses.reduce((s: number, e: any) => s + Number(e.amount), 0), [roomExpenses]);
   const totalPersonal = useMemo(() => personal.reduce((s: number, e: any) => s + Number(e.amount), 0), [personal]);
@@ -37,13 +51,25 @@ const UserDashboard = () => {
     return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
   });
   const thisTotal = thisMonthPersonal.reduce((s: number, e: any) => s + Number(e.amount), 0);
+  const purseBalance = useMemo(
+  () =>
+    purse.reduce(
+      (s: number, t: any) =>
+        s + (t.type === 'inflow' ? Number(t.amount) : -Number(t.amount)),
+      0
+    ),
+  [purse]
+);
 
   const stats = [
     { label: 'Room Expenses', value: `₹${totalRoom.toLocaleString()}`, icon: Receipt, color: 'text-primary' },
     { label: 'Personal Total', value: `₹${totalPersonal.toLocaleString()}`, icon: PiggyBank, color: 'text-[hsl(var(--success))]' },
     { label: 'This Month', value: `₹${thisTotal.toLocaleString()}`, icon: TrendingUp, color: 'text-[hsl(var(--warning))]' },
-    { label: 'Categories', value: new Set(personal.map((e: any) => e.category)).size, icon: Target, color: 'text-muted-foreground' },
+    { label: 'Purse Balance', value: `₹${purseBalance.toLocaleString()}`, icon: Wallet, color: 'text-[hsl(var(--success))]' },
   ];
+
+  
+
 
   return (
     <div className="space-y-6">
