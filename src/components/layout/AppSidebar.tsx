@@ -29,10 +29,10 @@ const userLinks = [
 ];
 
 export const AppSidebar = () => {
-  const { user, logout } = useAuth();
+  const { profile, role, logout } = useAuth();
   const { dark, toggle } = useTheme();
   const [open, setOpen] = useState(false);
-  const links = user?.role === 'admin' ? adminLinks : userLinks;
+  const links = role === 'admin' ? adminLinks : userLinks;
 
   const NavContent = () => (
     <div className="flex flex-col h-full">
@@ -40,7 +40,7 @@ export const AppSidebar = () => {
         <h2 className="text-lg font-bold tracking-tight text-sidebar-foreground font-['Space_Grotesk']">
           RoomExpense
         </h2>
-        <p className="text-xs text-muted-foreground mt-0.5 capitalize">{user?.role} · {user?.name}</p>
+        <p className="text-xs text-muted-foreground mt-0.5 capitalize">{role} · {profile?.name}</p>
       </div>
       <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
         {links.map(l => (
@@ -71,11 +71,9 @@ export const AppSidebar = () => {
 
   return (
     <>
-      {/* Desktop */}
       <aside className="hidden lg:flex w-64 border-r border-sidebar-border bg-sidebar flex-col h-screen sticky top-0">
         <NavContent />
       </aside>
-      {/* Mobile */}
       <div className="lg:hidden fixed top-0 left-0 right-0 z-40 bg-sidebar border-b border-sidebar-border px-4 py-3 flex items-center justify-between">
         <h2 className="text-base font-bold text-sidebar-foreground font-['Space_Grotesk']">RoomExpense</h2>
         <Sheet open={open} onOpenChange={setOpen}>

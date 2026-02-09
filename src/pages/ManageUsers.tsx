@@ -1,27 +1,36 @@
-import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { storage } from '@/lib/storage';
+import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Check, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 const ManageUsers = () => {
-  const { user } = useAuth();
+  const { profile } = useAuth();
   const { toast } = useToast();
-  const [users, setUsers] = useState(storage.getUsers().filter(u => u.role === 'user' && u.adminId === user?.id));
+  const queryClient = useQueryClient();
 
-  const updateUser = (id: string, approved: boolean) => {
-    const allUsers = storage.getUsers();
-    const updated = allUsers.map(u => u.id === id ? { ...u, approved } : u);
-    storage.setUsers(updated);
-    setUsers(updated.filter(u => u.role === 'user' && u.adminId === user?.id));
+  const { data: users = [] } = useQuery({
+    queryKey: ['admin_users', profile?.id],
+    queryFn: async () => {
+      if (!profile) return [];
+      const { data } = await supabase.from('profiles').select('*').eq('admin_id', profile.id);
+      return data ?? [];
+    },
+    enabled: !!profile,
+  });
+
+  const updateUser = async (id: string, approved: boolean) => {
+    const { error } = await supabase.from('profiles').update({ approved }).eq('id', id);
+    if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
+    queryClient.invalidateQueries({ queryKey: ['admin_users'] });
     toast({ title: approved ? 'Approved' : 'Rejected', description: `User ${approved ? 'approved' : 'rejected'}.` });
   };
 
-  const pending = users.filter(u => !u.approved);
-  const approved = users.filter(u => u.approved);
+  const pending = users.filter((u: any) => !u.approved);
+  const approved = users.filter((u: any) => u.approved);
 
   return (
     <div className="space-y-6">
@@ -31,7 +40,7 @@ const ManageUsers = () => {
         <Card>
           <CardHeader><CardTitle className="text-base">Pending Requests ({pending.length})</CardTitle></CardHeader>
           <CardContent className="space-y-3">
-            {pending.map(u => (
+            {pending.map((u: any) => (
               <div key={u.id} className="flex items-center justify-between p-3 rounded-lg bg-muted">
                 <div>
                   <p className="font-medium text-foreground">{u.name}</p>
@@ -54,7 +63,7 @@ const ManageUsers = () => {
             <p className="text-sm text-muted-foreground">No approved users yet.</p>
           ) : (
             <div className="space-y-3">
-              {approved.map(u => (
+              {approved.map((u: any) => (
                 <div key={u.id} className="flex items-center justify-between p-3 rounded-lg bg-muted">
                   <div>
                     <p className="font-medium text-foreground">{u.name}</p>

@@ -1,8 +1,9 @@
 import { useAuth } from '@/contexts/AuthContext';
-import { storage } from '@/lib/storage';
+import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 
 const COLORS = [
   'hsl(215, 65%, 52%)', 'hsl(145, 55%, 42%)', 'hsl(38, 92%, 50%)',
@@ -10,24 +11,35 @@ const COLORS = [
 ];
 
 const Analytics = () => {
-  const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
-  const roomExpenses = storage.getRoomExpenses();
-  const personalExpenses = storage.getPersonalExpenses().filter(e => e.userId === user?.id);
+  const { user, role, profile } = useAuth();
+  const isAdmin = role === 'admin';
 
-  const expenses = isAdmin ? roomExpenses : personalExpenses;
+  const { data: expenses = [] } = useQuery({
+    queryKey: ['analytics_expenses', isAdmin ? 'admin' : 'user', profile?.id, user?.id],
+    queryFn: async () => {
+      if (isAdmin && profile) {
+        const { data } = await supabase.from('room_expenses').select('*').eq('admin_id', profile.id);
+        return data ?? [];
+      } else if (user) {
+        const { data } = await supabase.from('personal_expenses').select('*').eq('user_id', user.id);
+        return data ?? [];
+      }
+      return [];
+    },
+    enabled: !!user,
+  });
 
   const categoryData = useMemo(() => {
     const map: Record<string, number> = {};
-    expenses.forEach(e => { map[e.category] = (map[e.category] || 0) + e.amount; });
+    expenses.forEach((e: any) => { map[e.category] = (map[e.category] || 0) + Number(e.amount); });
     return Object.entries(map).map(([name, value]) => ({ name, value }));
   }, [expenses]);
 
   const monthlyData = useMemo(() => {
     const map: Record<string, number> = {};
-    expenses.forEach(e => {
+    expenses.forEach((e: any) => {
       const key = e.date.slice(0, 7);
-      map[key] = (map[key] || 0) + e.amount;
+      map[key] = (map[key] || 0) + Number(e.amount);
     });
     return Object.entries(map).sort().slice(-6).map(([month, total]) => ({ month, total }));
   }, [expenses]);
