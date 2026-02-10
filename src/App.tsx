@@ -8,14 +8,18 @@ import { ThemeProvider } from "@/contexts/ThemeContext";
 import { AppLayout } from "@/components/layout/AppLayout";
 import Landing from "./pages/Landing";
 import Auth from "./pages/Auth";
+import ForgotPassword from "./pages/ForgotPassword";
 import Dashboard from "./pages/Dashboard";
 import RoomExpenses from "./pages/RoomExpenses";
 import PersonalExpenses from "./pages/PersonalExpenses";
 import Purse from "./pages/Purse";
 import ManageUsers from "./pages/ManageUsers";
 import Messages from "./pages/Messages";
+import RoomChat from "./pages/RoomChat";
+import NoticeBoard from "./pages/NoticeBoard";
 import Analytics from "./pages/Analytics";
 import SettingsPage from "./pages/SettingsPage";
+import ProfileSettings from "./pages/ProfileSettings";
 import NotFound from "./pages/NotFound";
 import { Loader2 } from "lucide-react";
 
@@ -49,15 +53,19 @@ const AppRoutes = () => (
     <Route path="/" element={<PublicRoute><Landing /></PublicRoute>} />
     <Route path="/login" element={<PublicRoute><Auth /></PublicRoute>} />
     <Route path="/signup" element={<PublicRoute><Auth /></PublicRoute>} />
+    <Route path="/forgot-password" element={<ForgotPassword />} />
     <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
       <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/room-expenses" element={<RoomExpenses />} />
       <Route path="/personal-expenses" element={<PersonalExpenses />} />
-      <Route path="/purse" element={<ProtectedRoute adminOnly><Purse /></ProtectedRoute>} />
+      <Route path="/purse" element={<Purse />} />
       <Route path="/manage-users" element={<ProtectedRoute adminOnly><ManageUsers /></ProtectedRoute>} />
       <Route path="/messages" element={<Messages />} />
+      <Route path="/room-chat" element={<RoomChat />} />
+      <Route path="/notice-board" element={<NoticeBoard />} />
       <Route path="/analytics" element={<Analytics />} />
       <Route path="/settings" element={<SettingsPage />} />
+      <Route path="/profile-settings" element={<ProfileSettings />} />
     </Route>
     <Route path="*" element={<NotFound />} />
   </Routes>

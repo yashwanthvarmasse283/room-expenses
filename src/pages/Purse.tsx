@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,61 +7,110 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Plus, ArrowUpRight, ArrowDownLeft, Wallet } from 'lucide-react';
+import { Plus, ArrowUpRight, ArrowDownLeft, Wallet, Pencil, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 const Purse = () => {
-  const { profile } = useAuth();
+  const { profile, role } = useAuth();
+  const isAdmin = role === 'admin';
   const [open, setOpen] = useState(false);
+  const [txType, setTxType] = useState<'inflow' | 'outflow'>('inflow');
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
   const [amount, setAmount] = useState('');
   const [date, setDate] = useState('');
   const [description, setDescription] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  const adminId = isAdmin ? profile?.id : profile?.admin_id;
 
   const { data: transactions = [] } = useQuery({
-    queryKey: ['purse_transactions', profile?.id],
+    queryKey: ['purse_transactions', adminId],
     queryFn: async () => {
-      if (!profile) return [];
-      const { data } = await supabase.from('purse_transactions').select('*').eq('admin_id', profile.id).order('created_at', { ascending: false });
+      if (!adminId) return [];
+      const { data } = await supabase.from('purse_transactions').select('*').eq('admin_id', adminId).order('created_at', { ascending: false });
       return data ?? [];
     },
-    enabled: !!profile,
+    enabled: !!adminId,
   });
+
+  // Real-time
+  useEffect(() => {
+    if (!adminId) return;
+    const channel = supabase
+      .channel('purse-rt')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'purse_transactions', filter: `admin_id=eq.${adminId}` }, () => {
+        queryClient.invalidateQueries({ queryKey: ['purse_transactions', adminId] });
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [adminId, queryClient]);
 
   const balance = transactions.reduce((s: number, t: any) => s + (t.type === 'inflow' ? Number(t.amount) : -Number(t.amount)), 0);
   const totalIn = transactions.filter((t: any) => t.type === 'inflow').reduce((s: number, t: any) => s + Number(t.amount), 0);
   const totalOut = transactions.filter((t: any) => t.type === 'outflow').reduce((s: number, t: any) => s + Number(t.amount), 0);
 
-  const addMoney = async (e: React.FormEvent) => {
+  const resetForm = () => { setAmount(''); setDate(''); setDescription(''); setEditingId(null); setTxType('inflow'); };
+
+  const save = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!profile) return;
-    const { error } = await supabase.from('purse_transactions')
-      .insert({ admin_id: profile.id, type: 'inflow', amount: Number(amount), date, description });
+    if (!adminId) return;
+
+    if (editingId) {
+      const { error } = await supabase.from('purse_transactions')
+        .update({ amount: Number(amount), date, description, type: txType })
+        .eq('id', editingId);
+      if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
+      toast({ title: 'Updated' });
+    } else {
+      const { error } = await supabase.from('purse_transactions')
+        .insert({ admin_id: adminId, type: txType, amount: Number(amount), date, description });
+      if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
+      toast({ title: txType === 'inflow' ? 'Money Added' : 'Expense Added', description: `₹${amount}` });
+    }
+    queryClient.invalidateQueries({ queryKey: ['purse_transactions'] });
+    setOpen(false);
+    resetForm();
+  };
+
+  const remove = async (id: string) => {
+    const { error } = await supabase.from('purse_transactions').delete().eq('id', id);
     if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
     queryClient.invalidateQueries({ queryKey: ['purse_transactions'] });
-    setOpen(false); setAmount(''); setDate(''); setDescription('');
-    toast({ title: 'Money Added', description: `₹${amount} added to purse.` });
+    toast({ title: 'Deleted' });
+  };
+
+  const startEdit = (t: any) => {
+    setEditingId(t.id); setAmount(String(t.amount)); setDate(t.date);
+    setDescription(t.description || ''); setTxType(t.type);
+    setOpen(true);
   };
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-2xl font-bold text-foreground">Purse / Wallet</h1>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild><Button><Plus className="w-4 h-4 mr-1" />Add Money</Button></DialogTrigger>
-          <DialogContent>
-            <DialogHeader><DialogTitle>Add Money to Purse</DialogTitle></DialogHeader>
-            <form onSubmit={addMoney} className="space-y-4">
-              <div className="space-y-2"><Label>Amount (₹)</Label><Input type="number" value={amount} onChange={e => setAmount(e.target.value)} required /></div>
-              <div className="space-y-2"><Label>Date</Label><Input type="date" value={date} onChange={e => setDate(e.target.value)} required /></div>
-              <div className="space-y-2"><Label>Description</Label><Textarea value={description} onChange={e => setDescription(e.target.value)} /></div>
-              <Button className="w-full" type="submit">Add Money</Button>
-            </form>
-          </DialogContent>
-        </Dialog>
+        <div className="flex gap-2">
+          <Dialog open={open} onOpenChange={o => { setOpen(o); if (!o) resetForm(); }}>
+            <DialogTrigger asChild>
+              <Button onClick={() => setTxType('inflow')}><Plus className="w-4 h-4 mr-1" />Add Money</Button>
+            </DialogTrigger>
+            <DialogTrigger asChild>
+              <Button variant="outline" onClick={() => setTxType('outflow')}><ArrowUpRight className="w-4 h-4 mr-1" />Add Expense</Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader><DialogTitle>{editingId ? 'Edit' : txType === 'inflow' ? 'Add Money' : 'Add Expense'}</DialogTitle></DialogHeader>
+              <form onSubmit={save} className="space-y-4">
+                <div className="space-y-2"><Label>Amount (₹)</Label><Input type="number" value={amount} onChange={e => setAmount(e.target.value)} required /></div>
+                <div className="space-y-2"><Label>Date</Label><Input type="date" value={date} onChange={e => setDate(e.target.value)} required /></div>
+                <div className="space-y-2"><Label>Description</Label><Textarea value={description} onChange={e => setDescription(e.target.value)} /></div>
+                <Button className="w-full" type="submit">{editingId ? 'Update' : 'Save'}</Button>
+              </form>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -104,9 +153,17 @@ const Purse = () => {
                       <p className="text-xs text-muted-foreground">{t.date}</p>
                     </div>
                   </div>
-                  <span className={`font-bold ${t.type === 'inflow' ? 'text-[hsl(var(--success))]' : 'text-destructive'}`}>
-                    {t.type === 'inflow' ? '+' : '-'}₹{Number(t.amount).toLocaleString()}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className={`font-bold ${t.type === 'inflow' ? 'text-[hsl(var(--success))]' : 'text-destructive'}`}>
+                      {t.type === 'inflow' ? '+' : '-'}₹{Number(t.amount).toLocaleString()}
+                    </span>
+                    {isAdmin && (
+                      <>
+                        <Button variant="ghost" size="icon" onClick={() => startEdit(t)}><Pencil className="w-3 h-3" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => remove(t.id)}><Trash2 className="w-3 h-3 text-destructive" /></Button>
+                      </>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
