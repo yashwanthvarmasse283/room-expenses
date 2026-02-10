@@ -13,6 +13,7 @@ export interface Profile {
   admin_id: string | null;
   approved: boolean;
   avatar_url: string | null;
+  mobile_number: string | null;
   created_at: string;
 }
 
@@ -23,8 +24,8 @@ interface AuthContextType {
   role: AppRole | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<string | null>;
-  signupAdmin: (name: string, email: string, password: string) => Promise<string | null>;
-  signupUser: (name: string, email: string, password: string, adminCode: string) => Promise<string | null>;
+  signupAdmin: (name: string, email: string, password: string, mobileNumber: string) => Promise<string | null>;
+  signupUser: (name: string, email: string, password: string, adminCode: string, mobileNumber: string) => Promise<string | null>;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -100,7 +101,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return null;
   }, []);
 
-  const signupAdmin = useCallback(async (name: string, email: string, password: string): Promise<string | null> => {
+  const signupAdmin = useCallback(async (name: string, email: string, password: string, mobileNumber: string): Promise<string | null> => {
     const redirectUrl = `${window.location.origin}/`;
     const { data, error } = await supabase.auth.signUp({
       email,
@@ -113,13 +114,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (error) return error.message;
     if (!data.user) return 'Signup failed';
 
-    // Generate unique admin code
     const adminCode = data.user.id.slice(0, 8).toUpperCase();
 
-    // Update profile with admin info
     const { error: profileError } = await supabase
       .from('profiles')
-      .update({ name, admin_code: adminCode, approved: true })
+      .update({ name, admin_code: adminCode, approved: true, mobile_number: mobileNumber })
       .eq('user_id', data.user.id);
     if (profileError) return profileError.message;
 
@@ -133,8 +132,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return null;
   }, []);
 
-  const signupUser = useCallback(async (name: string, email: string, password: string, adminCode: string): Promise<string | null> => {
-    // Find admin by admin_code
+  const signupUser = useCallback(async (name: string, email: string, password: string, adminCode: string, mobileNumber: string): Promise<string | null> => {
     const { data: adminProfile, error: adminError } = await supabase
       .from('profiles')
       .select('id')
@@ -155,10 +153,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (error) return error.message;
     if (!data.user) return 'Signup failed';
 
-    // Update profile with admin link
     const { error: profileError } = await supabase
       .from('profiles')
-      .update({ name, admin_id: adminProfile.id, approved: false })
+      .update({ name, admin_id: adminProfile.id, approved: false, mobile_number: mobileNumber })
       .eq('user_id', data.user.id);
     if (profileError) return profileError.message;
 

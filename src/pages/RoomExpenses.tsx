@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
@@ -15,7 +15,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 const categories = ['Food', 'Rent', 'Electricity', 'Internet', 'Misc'] as const;
 
 const RoomExpenses = () => {
-  const { role, profile } = useAuth();
+  const { user, role, profile } = useAuth();
   const isAdmin = role === 'admin';
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -42,6 +42,18 @@ const RoomExpenses = () => {
     enabled: !!adminId,
   });
 
+  // Real-time
+  useEffect(() => {
+    if (!adminId) return;
+    const channel = supabase
+      .channel('room-expenses-rt')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'room_expenses', filter: `admin_id=eq.${adminId}` }, () => {
+        queryClient.invalidateQueries({ queryKey: ['room_expenses', adminId] });
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [adminId, queryClient]);
+
   const resetForm = () => { setDate(''); setCategory('Food'); setAmount(''); setDescription(''); setPaidBy(''); setEditingId(null); };
 
   const save = async (e: React.FormEvent) => {
@@ -55,12 +67,13 @@ const RoomExpenses = () => {
       if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
       toast({ title: 'Updated' });
     } else {
+      const expAdminId = isAdmin ? profile.id : profile.admin_id!;
       const { error } = await supabase.from('room_expenses')
-        .insert({ admin_id: profile.id, date, category, amount: Number(amount), description, paid_by: paidBy });
+        .insert({ admin_id: expAdminId, date, category, amount: Number(amount), description, paid_by: paidBy || profile.name });
       if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
       // Auto-deduct from purse
       await supabase.from('purse_transactions')
-        .insert({ admin_id: profile.id, type: 'outflow', amount: Number(amount), date, description: `Room: ${description || category}` });
+        .insert({ admin_id: expAdminId, type: 'outflow', amount: Number(amount), date, description: `Room: ${description || category}` });
       toast({ title: 'Added' });
     }
     queryClient.invalidateQueries({ queryKey: ['room_expenses'] });
@@ -100,11 +113,10 @@ const RoomExpenses = () => {
           <h1 className="text-2xl font-bold text-foreground">Room Expenses</h1>
           <p className="text-sm text-muted-foreground">Monthly total: ₹{monthlyTotal.toLocaleString()}</p>
         </div>
-        {isAdmin && (
-          <Dialog open={open} onOpenChange={o => { setOpen(o); if (!o) resetForm(); }}>
-            <DialogTrigger asChild>
-              <Button><Plus className="w-4 h-4 mr-1" />Add Expense</Button>
-            </DialogTrigger>
+        <Dialog open={open} onOpenChange={o => { setOpen(o); if (!o) resetForm(); }}>
+          <DialogTrigger asChild>
+            <Button><Plus className="w-4 h-4 mr-1" />Add Expense</Button>
+          </DialogTrigger>
             <DialogContent>
               <DialogHeader><DialogTitle>{editingId ? 'Edit' : 'Add'} Expense</DialogTitle></DialogHeader>
               <form onSubmit={save} className="space-y-4">
@@ -124,9 +136,8 @@ const RoomExpenses = () => {
                 <div className="space-y-2"><Label>Description</Label><Textarea value={description} onChange={e => setDescription(e.target.value)} /></div>
                 <Button className="w-full" type="submit">{editingId ? 'Update' : 'Add'} Expense</Button>
               </form>
-            </DialogContent>
-          </Dialog>
-        )}
+          </DialogContent>
+        </Dialog>
       </div>
 
       <div className="flex gap-3 flex-wrap">

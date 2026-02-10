@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/sheet';
 import {
   LayoutDashboard, Receipt, PiggyBank, MessageSquare, BarChart3,
-  Settings, LogOut, Menu, Sun, Moon, Wallet, Users
+  Settings, LogOut, Menu, Sun, Moon, Wallet, Users, MessagesSquare, Megaphone, UserCog
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -14,8 +14,11 @@ const adminLinks = [
   { to: '/room-expenses', label: 'Room Expenses', icon: Receipt },
   { to: '/purse', label: 'Purse / Wallet', icon: Wallet },
   { to: '/manage-users', label: 'Manage Users', icon: Users },
+  { to: '/room-chat', label: 'Room Chat', icon: MessagesSquare },
+  { to: '/notice-board', label: 'Notice Board', icon: Megaphone },
   { to: '/messages', label: 'Messages', icon: MessageSquare },
   { to: '/analytics', label: 'Analytics', icon: BarChart3 },
+  { to: '/profile-settings', label: 'Profile', icon: UserCog },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
 
@@ -23,8 +26,12 @@ const userLinks = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/room-expenses', label: 'Room Expenses', icon: Receipt },
   { to: '/personal-expenses', label: 'Personal Expenses', icon: PiggyBank },
+  { to: '/purse', label: 'Purse / Wallet', icon: Wallet },
+  { to: '/room-chat', label: 'Room Chat', icon: MessagesSquare },
+  { to: '/notice-board', label: 'Notice Board', icon: Megaphone },
   { to: '/messages', label: 'Messages', icon: MessageSquare },
   { to: '/analytics', label: 'Analytics', icon: BarChart3 },
+  { to: '/profile-settings', label: 'Profile', icon: UserCog },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
 
