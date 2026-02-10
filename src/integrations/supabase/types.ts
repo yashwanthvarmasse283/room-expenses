@@ -14,6 +14,41 @@ export type Database = {
   }
   public: {
     Tables: {
+      chat_messages: {
+        Row: {
+          admin_id: string
+          content: string
+          created_at: string
+          id: string
+          sender_id: string
+          sender_name: string
+        }
+        Insert: {
+          admin_id: string
+          content: string
+          created_at?: string
+          id?: string
+          sender_id: string
+          sender_name: string
+        }
+        Update: {
+          admin_id?: string
+          content?: string
+          created_at?: string
+          id?: string
+          sender_id?: string
+          sender_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_messages_admin_id_fkey"
+            columns: ["admin_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       messages: {
         Row: {
           content: string
@@ -49,6 +84,38 @@ export type Database = {
           {
             foreignKeyName: "messages_to_admin_id_fkey"
             columns: ["to_admin_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notices: {
+        Row: {
+          admin_id: string
+          content: string
+          created_at: string
+          id: string
+          title: string
+        }
+        Insert: {
+          admin_id: string
+          content: string
+          created_at?: string
+          id?: string
+          title: string
+        }
+        Update: {
+          admin_id?: string
+          content?: string
+          created_at?: string
+          id?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notices_admin_id_fkey"
+            columns: ["admin_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -124,6 +191,7 @@ export type Database = {
           created_at: string
           email: string
           id: string
+          mobile_number: string | null
           name: string
           updated_at: string
           user_id: string
@@ -136,6 +204,7 @@ export type Database = {
           created_at?: string
           email: string
           id?: string
+          mobile_number?: string | null
           name: string
           updated_at?: string
           user_id: string
@@ -148,6 +217,7 @@ export type Database = {
           created_at?: string
           email?: string
           id?: string
+          mobile_number?: string | null
           name?: string
           updated_at?: string
           user_id?: string
