@@ -5,12 +5,18 @@ import { Receipt, PiggyBank, TrendingUp, Wallet, Megaphone } from 'lucide-react'
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
+const COLORS = [
+  'hsl(215, 65%, 52%)', 'hsl(145, 55%, 42%)', 'hsl(38, 92%, 50%)',
+  'hsl(0, 65%, 55%)', 'hsl(270, 50%, 55%)', 'hsl(180, 50%, 42%)',
+];
 
 const UserDashboard = () => {
   const { user, profile } = useAuth();
   const navigate = useNavigate();
   const adminId = profile?.admin_id ?? profile?.id;
+
   const { data: roomExpenses = [] } = useQuery({
     queryKey: ['room_expenses_user', profile?.admin_id],
     queryFn: async () => {
@@ -30,18 +36,16 @@ const UserDashboard = () => {
     },
     enabled: !!user,
   });
+
   const { data: purse = [] } = useQuery({
-  queryKey: ['purse_transactions_user', profile?.admin_id],
-  queryFn: async () => {
-    if (!profile?.admin_id) return [];
-    const { data } = await supabase
-      .from('purse_transactions')
-      .select('*')
-      .eq('admin_id', profile.admin_id);
-    return data ?? [];
-  },
-  enabled: !!profile?.admin_id,
-});
+    queryKey: ['purse_transactions_user', profile?.admin_id],
+    queryFn: async () => {
+      if (!profile?.admin_id) return [];
+      const { data } = await supabase.from('purse_transactions').select('*').eq('admin_id', profile.admin_id);
+      return data ?? [];
+    },
+    enabled: !!profile?.admin_id,
+  });
 
   const { data: notices = [] } = useQuery({
     queryKey: ['notices_dashboard', adminId],
@@ -57,20 +61,39 @@ const UserDashboard = () => {
   const totalPersonal = useMemo(() => personal.reduce((s: number, e: any) => s + Number(e.amount), 0), [personal]);
 
   const now = new Date();
-  const thisMonthPersonal = personal.filter((e: any) => {
+  const thisMonthRoom = roomExpenses.filter((e: any) => {
     const d = new Date(e.date);
     return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
   });
-  const thisTotal = thisMonthPersonal.reduce((s: number, e: any) => s + Number(e.amount), 0);
+  const lastMonthRoom = roomExpenses.filter((e: any) => {
+    const d = new Date(e.date);
+    const lm = new Date(now.getFullYear(), now.getMonth() - 1);
+    return d.getMonth() === lm.getMonth() && d.getFullYear() === lm.getFullYear();
+  });
+  const thisTotal = thisMonthRoom.reduce((s: number, e: any) => s + Number(e.amount), 0);
+  const lastTotal = lastMonthRoom.reduce((s: number, e: any) => s + Number(e.amount), 0);
+
   const purseBalance = useMemo(
-    () =>
-      purse.reduce(
-        (s: number, t: any) =>
-          s + (t.type === 'inflow' ? Number(t.amount) : -Number(t.amount)),
-        0
-      ),
+    () => purse.reduce((s: number, t: any) => s + (t.type === 'inflow' ? Number(t.amount) : -Number(t.amount)), 0),
     [purse]
   );
+
+  // Category breakdown for this month
+  const categoryData = useMemo(() => {
+    const map: Record<string, number> = {};
+    thisMonthRoom.forEach((e: any) => { map[e.category] = (map[e.category] || 0) + Number(e.amount); });
+    return Object.entries(map).map(([name, value]) => ({ name, value }));
+  }, [thisMonthRoom]);
+
+  // Monthly comparison
+  const comparisonData = useMemo(() => {
+    const thisLabel = now.toLocaleString('default', { month: 'short' });
+    const lastLabel = new Date(now.getFullYear(), now.getMonth() - 1).toLocaleString('default', { month: 'short' });
+    return [
+      { month: lastLabel, total: lastTotal },
+      { month: thisLabel, total: thisTotal },
+    ];
+  }, [thisTotal, lastTotal, now]);
 
   const stats = [
     { label: 'Room Expenses', value: `₹${totalRoom.toLocaleString()}`, icon: Receipt, color: 'text-primary' },
@@ -78,9 +101,6 @@ const UserDashboard = () => {
     { label: 'This Month', value: `₹${thisTotal.toLocaleString()}`, icon: TrendingUp, color: 'text-[hsl(var(--warning))]' },
     { label: 'Purse Balance', value: `₹${purseBalance.toLocaleString()}`, icon: Wallet, color: 'text-[hsl(var(--success))]' },
   ];
-
-  
-
 
   return (
     <div className="space-y-6">
@@ -124,6 +144,56 @@ const UserDashboard = () => {
           </CardContent>
         </Card>
       )}
+
+      {/* This Month vs Last Month + Category Breakdown */}
+      <div className="grid lg:grid-cols-2 gap-4">
+        <Card>
+          <CardHeader><CardTitle className="text-base">This Month vs Last Month</CardTitle></CardHeader>
+          <CardContent>
+            {comparisonData.every(d => d.total === 0) ? (
+              <p className="text-sm text-muted-foreground">No data yet.</p>
+            ) : (
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={comparisonData}>
+                  <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                  <YAxis tick={{ fontSize: 12 }} />
+                  <Tooltip />
+                  <Bar dataKey="total" fill="hsl(215, 65%, 52%)" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader><CardTitle className="text-base">Category Breakdown (This Month)</CardTitle></CardHeader>
+          <CardContent>
+            {categoryData.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No expenses this month.</p>
+            ) : (
+              <div className="flex items-center gap-4">
+                <ResponsiveContainer width="55%" height={200}>
+                  <PieChart>
+                    <Pie data={categoryData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} innerRadius={35}>
+                      {categoryData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="space-y-2">
+                  {categoryData.map((d, i) => (
+                    <div key={d.name} className="flex items-center gap-2 text-xs">
+                      <span className="w-3 h-3 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
+                      <span className="text-foreground">{d.name}</span>
+                      <span className="text-muted-foreground">₹{d.value.toLocaleString()}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       <Card>
         <CardHeader><CardTitle className="text-base">Recent Personal Expenses</CardTitle></CardHeader>

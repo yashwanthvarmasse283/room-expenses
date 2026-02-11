@@ -13,6 +13,8 @@ interface WebhookPayload {
   schema: string;
 }
 
+const LOW_BALANCE_THRESHOLD = 500;
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -29,21 +31,18 @@ Deno.serve(async (req) => {
     const payload: WebhookPayload = await req.json();
     const { table, record } = payload;
 
-    // Determine admin_id based on table
     let adminId: string | null = null;
     let messageBody = "";
+    let senderName = "";
 
     switch (table) {
       case "room_expenses":
         adminId = record.admin_id;
-        messageBody = `💸 New expense added: ₹${record.amount} for "${record.description || record.category}" (${record.category}) on ${record.date}`;
+        senderName = record.paid_by || "Someone";
         break;
       case "purse_transactions":
         adminId = record.admin_id;
-        messageBody =
-          record.type === "inflow"
-            ? `💰 ₹${record.amount} added to purse: "${record.description || "Money Added"}"`
-            : `💳 ₹${record.amount} spent from purse: "${record.description || "Expense"}"`;
+        senderName = record.description?.split(":")[0] || "Someone";
         break;
       case "notices":
         adminId = record.admin_id;
@@ -66,7 +65,30 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Fetch all room members (admin + approved users)
+    // Calculate current purse balance
+    const { data: purseData } = await supabase
+      .from("purse_transactions")
+      .select("type, amount")
+      .eq("admin_id", adminId);
+
+    const purseBalance = (purseData || []).reduce(
+      (s: number, t: any) =>
+        s + (t.type === "inflow" ? Number(t.amount) : -Number(t.amount)),
+      0
+    );
+
+    // Build context-aware messages with balance
+    if (table === "room_expenses") {
+      messageBody = `💸 ${senderName} added ${record.category} expense: ₹${record.amount}${record.description ? ` for "${record.description}"` : ""}. Remaining Purse: ₹${purseBalance.toLocaleString()}.`;
+    } else if (table === "purse_transactions") {
+      if (record.type === "inflow") {
+        messageBody = `💰 ₹${record.amount} added to purse: "${record.description || "Money Added"}". Current Purse: ₹${purseBalance.toLocaleString()}.`;
+      } else {
+        messageBody = `💳 ₹${record.amount} spent from purse: "${record.description || "Expense"}". Remaining Purse: ₹${purseBalance.toLocaleString()}.`;
+      }
+    }
+
+    // Fetch all room members
     const { data: members } = await supabase
       .from("profiles")
       .select("mobile_number, name, user_id")
@@ -83,7 +105,6 @@ Deno.serve(async (req) => {
     const results: any[] = [];
 
     for (const member of members) {
-      // Skip sending to the person who triggered the action (for chat)
       if (table === "chat_messages" && member.user_id === record.sender_id) {
         continue;
       }
@@ -103,8 +124,7 @@ Deno.serve(async (req) => {
         const resp = await fetch(twilioUrl, {
           method: "POST",
           headers: {
-            Authorization:
-              "Basic " + btoa(`${TWILIO_SID}:${TWILIO_TOKEN}`),
+            Authorization: "Basic " + btoa(`${TWILIO_SID}:${TWILIO_TOKEN}`),
             "Content-Type": "application/x-www-form-urlencoded",
           },
           body: body.toString(),
@@ -117,7 +137,41 @@ Deno.serve(async (req) => {
       }
     }
 
-    return new Response(JSON.stringify({ ok: true, results }), {
+    // Low balance alert
+    if (
+      purseBalance < LOW_BALANCE_THRESHOLD &&
+      (table === "room_expenses" || (table === "purse_transactions" && record.type === "outflow"))
+    ) {
+      const alertMsg = `⚠️ LOW BALANCE ALERT: Room purse is at ₹${purseBalance.toLocaleString()}. Please add funds to cover upcoming bills!`;
+
+      for (const member of members) {
+        const phone = member.mobile_number!.startsWith("+")
+          ? member.mobile_number!
+          : `+${member.mobile_number}`;
+
+        try {
+          const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json`;
+          const body = new URLSearchParams({
+            To: `whatsapp:${phone}`,
+            From: `whatsapp:${TWILIO_FROM}`,
+            Body: alertMsg,
+          });
+
+          await fetch(twilioUrl, {
+            method: "POST",
+            headers: {
+              Authorization: "Basic " + btoa(`${TWILIO_SID}:${TWILIO_TOKEN}`),
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: body.toString(),
+          });
+        } catch (_) {
+          // Don't block main flow
+        }
+      }
+    }
+
+    return new Response(JSON.stringify({ ok: true, results, purseBalance }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {

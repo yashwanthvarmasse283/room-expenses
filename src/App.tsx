@@ -14,6 +14,7 @@ import RoomExpenses from "./pages/RoomExpenses";
 import PersonalExpenses from "./pages/PersonalExpenses";
 import Purse from "./pages/Purse";
 import ManageUsers from "./pages/ManageUsers";
+import RoomSettings from "./pages/RoomSettings";
 import Messages from "./pages/Messages";
 import RoomChat from "./pages/RoomChat";
 import NoticeBoard from "./pages/NoticeBoard";
@@ -60,6 +61,7 @@ const AppRoutes = () => (
       <Route path="/personal-expenses" element={<PersonalExpenses />} />
       <Route path="/purse" element={<Purse />} />
       <Route path="/manage-users" element={<ProtectedRoute adminOnly><ManageUsers /></ProtectedRoute>} />
+      <Route path="/room-settings" element={<ProtectedRoute adminOnly><RoomSettings /></ProtectedRoute>} />
       <Route path="/messages" element={<Messages />} />
       <Route path="/room-chat" element={<RoomChat />} />
       <Route path="/notice-board" element={<NoticeBoard />} />

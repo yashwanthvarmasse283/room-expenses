@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/sheet';
 import {
   LayoutDashboard, Receipt, PiggyBank, MessageSquare, BarChart3,
-  Settings, LogOut, Menu, Sun, Moon, Wallet, Users, MessagesSquare, Megaphone, UserCog
+  Settings, LogOut, Menu, Sun, Moon, Wallet, Users, MessagesSquare, Megaphone, UserCog, SlidersHorizontal
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -14,6 +14,7 @@ const adminLinks = [
   { to: '/room-expenses', label: 'Room Expenses', icon: Receipt },
   { to: '/purse', label: 'Purse / Wallet', icon: Wallet },
   { to: '/manage-users', label: 'Manage Users', icon: Users },
+  { to: '/room-settings', label: 'Room Settings', icon: SlidersHorizontal },
   { to: '/room-chat', label: 'Room Chat', icon: MessagesSquare },
   { to: '/notice-board', label: 'Notice Board', icon: Megaphone },
   { to: '/messages', label: 'Messages', icon: MessageSquare },

@@ -1,12 +1,20 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Receipt, Users, Wallet, MessageSquare, TrendingUp, TrendingDown } from 'lucide-react';
+import { Receipt, Users, Wallet, MessageSquare, TrendingUp, TrendingDown, Megaphone } from 'lucide-react';
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+
+const COLORS = [
+  'hsl(215, 65%, 52%)', 'hsl(145, 55%, 42%)', 'hsl(38, 92%, 50%)',
+  'hsl(0, 65%, 55%)', 'hsl(270, 50%, 55%)', 'hsl(180, 50%, 42%)',
+];
 
 const AdminDashboard = () => {
   const { profile } = useAuth();
+  const navigate = useNavigate();
 
   const { data: expenses = [] } = useQuery({
     queryKey: ['room_expenses', profile?.id],
@@ -48,6 +56,16 @@ const AdminDashboard = () => {
     enabled: !!profile,
   });
 
+  const { data: notices = [] } = useQuery({
+    queryKey: ['notices_dashboard', profile?.id],
+    queryFn: async () => {
+      if (!profile) return [];
+      const { data } = await supabase.from('notices').select('*').eq('admin_id', profile.id).order('created_at', { ascending: false }).limit(3);
+      return data ?? [];
+    },
+    enabled: !!profile,
+  });
+
   const pending = users.filter((u: any) => !u.approved);
   const unread = messages.filter((m: any) => !m.read).length;
 
@@ -67,6 +85,23 @@ const AdminDashboard = () => {
   const thisTotal = thisMonth.reduce((s: number, e: any) => s + Number(e.amount), 0);
   const lastTotal = lastMonth.reduce((s: number, e: any) => s + Number(e.amount), 0);
   const changePercent = lastTotal ? Math.round(((thisTotal - lastTotal) / lastTotal) * 100) : 0;
+
+  // Category breakdown for this month
+  const categoryData = useMemo(() => {
+    const map: Record<string, number> = {};
+    thisMonth.forEach((e: any) => { map[e.category] = (map[e.category] || 0) + Number(e.amount); });
+    return Object.entries(map).map(([name, value]) => ({ name, value }));
+  }, [thisMonth]);
+
+  // Monthly comparison data (last 2 months)
+  const comparisonData = useMemo(() => {
+    const thisLabel = now.toLocaleString('default', { month: 'short' });
+    const lastLabel = new Date(now.getFullYear(), now.getMonth() - 1).toLocaleString('default', { month: 'short' });
+    return [
+      { month: lastLabel, total: lastTotal },
+      { month: thisLabel, total: thisTotal },
+    ];
+  }, [thisTotal, lastTotal, now]);
 
   const stats = [
     { label: 'Total Expenses', value: `₹${totalExpenses.toLocaleString()}`, icon: Receipt, color: 'text-primary' },
@@ -95,6 +130,78 @@ const AdminDashboard = () => {
             </CardContent>
           </Card>
         ))}
+      </div>
+
+      {/* Notice Board */}
+      {notices.length > 0 && (
+        <Card className="border-2 border-primary/40 bg-primary/5 shadow-md">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <div className="flex items-center gap-2">
+              <Megaphone className="w-5 h-5 text-primary" />
+              <CardTitle className="text-base">📢 Notice Board</CardTitle>
+            </div>
+            <button onClick={() => navigate('/notice-board')} className="text-xs text-primary hover:underline">View All</button>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {notices.map((n: any) => (
+              <div key={n.id} className="border-l-4 border-primary pl-3">
+                <p className="font-semibold text-sm text-foreground">{n.title}</p>
+                <p className="text-xs text-muted-foreground line-clamp-2">{n.content}</p>
+                <p className="text-[10px] text-muted-foreground mt-1">{new Date(n.created_at).toLocaleString()}</p>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* This Month vs Last Month + Category Breakdown */}
+      <div className="grid lg:grid-cols-2 gap-4">
+        <Card>
+          <CardHeader><CardTitle className="text-base">This Month vs Last Month</CardTitle></CardHeader>
+          <CardContent>
+            {comparisonData.every(d => d.total === 0) ? (
+              <p className="text-sm text-muted-foreground">No data yet.</p>
+            ) : (
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={comparisonData}>
+                  <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                  <YAxis tick={{ fontSize: 12 }} />
+                  <Tooltip />
+                  <Bar dataKey="total" fill="hsl(215, 65%, 52%)" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader><CardTitle className="text-base">Category Breakdown (This Month)</CardTitle></CardHeader>
+          <CardContent>
+            {categoryData.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No expenses this month.</p>
+            ) : (
+              <div className="flex items-center gap-4">
+                <ResponsiveContainer width="55%" height={200}>
+                  <PieChart>
+                    <Pie data={categoryData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} innerRadius={35}>
+                      {categoryData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="space-y-2">
+                  {categoryData.map((d, i) => (
+                    <div key={d.name} className="flex items-center gap-2 text-xs">
+                      <span className="w-3 h-3 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
+                      <span className="text-foreground">{d.name}</span>
+                      <span className="text-muted-foreground">₹{d.value.toLocaleString()}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       <div className="grid lg:grid-cols-2 gap-4">
