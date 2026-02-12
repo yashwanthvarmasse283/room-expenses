@@ -49,6 +49,44 @@ export type Database = {
           },
         ]
       }
+      food_toggle: {
+        Row: {
+          admin_id: string
+          date: string
+          eating_home: boolean
+          id: string
+          updated_at: string
+          user_id: string
+          user_name: string
+        }
+        Insert: {
+          admin_id: string
+          date?: string
+          eating_home?: boolean
+          id?: string
+          updated_at?: string
+          user_id: string
+          user_name: string
+        }
+        Update: {
+          admin_id?: string
+          date?: string
+          eating_home?: boolean
+          id?: string
+          updated_at?: string
+          user_id?: string
+          user_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "food_toggle_admin_id_fkey"
+            columns: ["admin_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       messages: {
         Row: {
           content: string
@@ -84,6 +122,59 @@ export type Database = {
           {
             foreignKeyName: "messages_to_admin_id_fkey"
             columns: ["to_admin_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      monthly_contributions: {
+        Row: {
+          admin_id: string
+          created_at: string
+          id: string
+          marked_by: string | null
+          month: number
+          paid: boolean
+          paid_at: string | null
+          term: number
+          updated_at: string
+          user_id: string
+          user_name: string
+          year: number
+        }
+        Insert: {
+          admin_id: string
+          created_at?: string
+          id?: string
+          marked_by?: string | null
+          month: number
+          paid?: boolean
+          paid_at?: string | null
+          term: number
+          updated_at?: string
+          user_id: string
+          user_name: string
+          year: number
+        }
+        Update: {
+          admin_id?: string
+          created_at?: string
+          id?: string
+          marked_by?: string | null
+          month?: number
+          paid?: boolean
+          paid_at?: string | null
+          term?: number
+          updated_at?: string
+          user_id?: string
+          user_name?: string
+          year?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "monthly_contributions_admin_id_fkey"
+            columns: ["admin_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -263,6 +354,50 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "purse_transactions_admin_id_fkey"
+            columns: ["admin_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      recurring_bills: {
+        Row: {
+          active: boolean
+          admin_id: string
+          amount: number
+          category: string
+          created_at: string
+          due_day: number
+          id: string
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          admin_id: string
+          amount: number
+          category?: string
+          created_at?: string
+          due_day: number
+          id?: string
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          admin_id?: string
+          amount?: number
+          category?: string
+          created_at?: string
+          due_day?: number
+          id?: string
+          name?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recurring_bills_admin_id_fkey"
             columns: ["admin_id"]
             isOneToOne: false
             referencedRelation: "profiles"

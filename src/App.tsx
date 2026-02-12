@@ -22,6 +22,9 @@ import Analytics from "./pages/Analytics";
 import SettingsPage from "./pages/SettingsPage";
 import ProfileSettings from "./pages/ProfileSettings";
 import NotFound from "./pages/NotFound";
+import Contributions from "./pages/Contributions";
+import RecurringBills from "./pages/RecurringBills";
+import FoodToggle from "./pages/FoodToggle";
 import { Loader2 } from "lucide-react";
 
 const queryClient = new QueryClient();
@@ -65,6 +68,9 @@ const AppRoutes = () => (
       <Route path="/messages" element={<Messages />} />
       <Route path="/room-chat" element={<RoomChat />} />
       <Route path="/notice-board" element={<NoticeBoard />} />
+      <Route path="/contributions" element={<Contributions />} />
+      <Route path="/recurring-bills" element={<RecurringBills />} />
+      <Route path="/food-toggle" element={<FoodToggle />} />
       <Route path="/analytics" element={<Analytics />} />
       <Route path="/settings" element={<SettingsPage />} />
       <Route path="/profile-settings" element={<ProfileSettings />} />
