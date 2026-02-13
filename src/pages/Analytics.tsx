@@ -1,7 +1,7 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import { useMemo, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -10,13 +10,20 @@ const COLORS = [
   'hsl(0, 65%, 55%)', 'hsl(270, 50%, 55%)', 'hsl(180, 50%, 42%)',
 ];
 
+const TERM_LABELS: Record<number, string> = { 1: 'Term 1 (1-10)', 2: 'Term 2 (11-20)', 3: 'Term 3 (21-30)' };
+
+const getTermForDay = (day: number) => {
+  if (day <= 10) return 1;
+  if (day <= 20) return 2;
+  return 3;
+};
+
 const Analytics = () => {
   const { user, role, profile } = useAuth();
   const isAdmin = role === 'admin';
   const queryClient = useQueryClient();
   const adminId = isAdmin ? profile?.id : profile?.admin_id;
 
-  // Room expenses for both roles
   const { data: roomExpenses = [] } = useQuery({
     queryKey: ['analytics_room', adminId],
     queryFn: async () => {
@@ -27,18 +34,6 @@ const Analytics = () => {
     enabled: !!adminId,
   });
 
-  // Personal expenses (user only)
-  const { data: personalExpenses = [] } = useQuery({
-    queryKey: ['analytics_personal', user?.id],
-    queryFn: async () => {
-      if (!user) return [];
-      const { data } = await supabase.from('personal_expenses').select('*').eq('user_id', user.id);
-      return data ?? [];
-    },
-    enabled: !!user && !isAdmin,
-  });
-
-  // Purse for both roles
   const { data: purse = [] } = useQuery({
     queryKey: ['analytics_purse', adminId],
     queryFn: async () => {
@@ -49,7 +44,6 @@ const Analytics = () => {
     enabled: !!adminId,
   });
 
-  // Real-time
   useEffect(() => {
     if (!adminId) return;
     const channel = supabase
@@ -93,6 +87,45 @@ const Analytics = () => {
     purse.filter((t: any) => t.type === 'outflow').reduce((s: number, t: any) => s + Number(t.amount), 0),
   [purse]);
 
+  // Term-wise analysis for current month
+  const termData = useMemo(() => {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
+    const thisMonthExpenses = expenses.filter((e: any) => {
+      const d = new Date(e.date);
+      return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+    });
+
+    const termTotals: Record<number, { total: number; categories: Record<string, number> }> = {
+      1: { total: 0, categories: {} },
+      2: { total: 0, categories: {} },
+      3: { total: 0, categories: {} },
+    };
+
+    thisMonthExpenses.forEach((e: any) => {
+      const day = new Date(e.date).getDate();
+      const term = getTermForDay(day);
+      const amt = Number(e.amount);
+      termTotals[term].total += amt;
+      termTotals[term].categories[e.category] = (termTotals[term].categories[e.category] || 0) + amt;
+    });
+
+    return [1, 2, 3].map(t => ({
+      term: TERM_LABELS[t],
+      total: termTotals[t].total,
+      ...termTotals[t].categories,
+    }));
+  }, [expenses]);
+
+  // Get all unique categories for term chart
+  const allCategories = useMemo(() => {
+    const cats = new Set<string>();
+    expenses.forEach((e: any) => cats.add(e.category));
+    return Array.from(cats);
+  }, [expenses]);
+
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold text-foreground">Analytics</h1>
@@ -111,6 +144,41 @@ const Analytics = () => {
           <CardContent><div className="text-sm font-medium"><span className="text-[hsl(var(--success))]">₹{totalInflow.toLocaleString()}</span> / <span className="text-destructive">₹{totalOutflow.toLocaleString()}</span></div></CardContent>
         </Card>
       </div>
+
+      {/* Term-Wise Expenditure Analysis */}
+      <Card>
+        <CardHeader><CardTitle className="text-base">Term-Wise Expenditure (This Month)</CardTitle></CardHeader>
+        <CardContent>
+          {termData.every(t => t.total === 0) ? (
+            <p className="text-sm text-muted-foreground">No expenses this month yet.</p>
+          ) : (
+            <div className="space-y-4">
+              <ResponsiveContainer width="100%" height={280}>
+                <BarChart data={termData}>
+                  <XAxis dataKey="term" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 12 }} />
+                  <Tooltip />
+                  <Legend />
+                  {allCategories.map((cat, i) => (
+                    <Bar key={cat} dataKey={cat} stackId="a" fill={COLORS[i % COLORS.length]} radius={i === allCategories.length - 1 ? [4, 4, 0, 0] : undefined} />
+                  ))}
+                </BarChart>
+              </ResponsiveContainer>
+              <div className="grid grid-cols-3 gap-3">
+                {termData.map((t, i) => (
+                  <div key={i} className={`text-center p-3 rounded-lg ${t.total === Math.max(...termData.map(d => d.total)) && t.total > 0 ? 'bg-destructive/10 border border-destructive/30' : 'bg-muted/50'}`}>
+                    <p className="text-xs text-muted-foreground">{t.term}</p>
+                    <p className="text-lg font-bold text-foreground">₹{t.total.toLocaleString()}</p>
+                    {t.total === Math.max(...termData.map(d => d.total)) && t.total > 0 && (
+                      <p className="text-xs text-destructive font-medium">Highest</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="grid lg:grid-cols-2 gap-6">
         <Card>

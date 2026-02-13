@@ -280,6 +280,7 @@ export type Database = {
           approved: boolean
           avatar_url: string | null
           created_at: string
+          daily_food_budget: number
           email: string
           id: string
           mobile_number: string | null
@@ -293,6 +294,7 @@ export type Database = {
           approved?: boolean
           avatar_url?: string | null
           created_at?: string
+          daily_food_budget?: number
           email: string
           id?: string
           mobile_number?: string | null
@@ -306,6 +308,7 @@ export type Database = {
           approved?: boolean
           avatar_url?: string | null
           created_at?: string
+          daily_food_budget?: number
           email?: string
           id?: string
           mobile_number?: string | null

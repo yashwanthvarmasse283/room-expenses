@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
@@ -12,7 +12,7 @@ import { Plus, Pencil, Trash2, Search } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-const categories = ['Food', 'Rent', 'Electricity', 'Internet', 'Misc'] as const;
+const categories = ['Food', 'Water', 'Rent', 'Electricity', 'Internet', 'Misc'] as const;
 
 const RoomExpenses = () => {
   const { user, role, profile } = useAuth();
@@ -36,13 +36,36 @@ const RoomExpenses = () => {
     queryKey: ['room_expenses', adminId],
     queryFn: async () => {
       if (!adminId) return [];
-      const { data } = await supabase.from('room_expenses').select('*').eq('admin_id', adminId).order('created_at', { ascending: false });
+      const { data } = await supabase.from('room_expenses').select('*').eq('admin_id', adminId).order('date', { ascending: false });
       return data ?? [];
     },
     enabled: !!adminId,
   });
 
-  // Real-time
+  // Fetch daily food budget
+  const { data: budgetData } = useQuery({
+    queryKey: ['daily_food_budget', adminId],
+    queryFn: async () => {
+      if (!adminId) return null;
+      const { data } = await supabase.from('profiles').select('daily_food_budget').eq('id', adminId).single();
+      return data;
+    },
+    enabled: !!adminId,
+  });
+
+  const dailyFoodBudget = (budgetData as any)?.daily_food_budget ?? 120;
+
+  // Group expenses by date for budget highlighting
+  const dailyFoodTotals = useMemo(() => {
+    const map: Record<string, number> = {};
+    expenses.forEach((e: any) => {
+      if (e.category === 'Food') {
+        map[e.date] = (map[e.date] || 0) + Number(e.amount);
+      }
+    });
+    return map;
+  }, [expenses]);
+
   useEffect(() => {
     if (!adminId) return;
     const channel = supabase
@@ -71,7 +94,6 @@ const RoomExpenses = () => {
       const { error } = await supabase.from('room_expenses')
         .insert({ admin_id: expAdminId, date, category, amount: Number(amount), description, paid_by: paidBy || profile.name });
       if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
-      // Auto-deduct from purse
       await supabase.from('purse_transactions')
         .insert({ admin_id: expAdminId, type: 'outflow', amount: Number(amount), date, description: `Room: ${description || category}` });
       toast({ title: 'Added' });
@@ -106,36 +128,52 @@ const RoomExpenses = () => {
     return d.getMonth() === n.getMonth() && d.getFullYear() === n.getFullYear();
   }).reduce((s: number, e: any) => s + Number(e.amount), 0);
 
+  // Group filtered expenses by date for display
+  const groupedByDate = useMemo(() => {
+    const groups: Record<string, any[]> = {};
+    filtered.forEach((e: any) => {
+      if (!groups[e.date]) groups[e.date] = [];
+      groups[e.date].push(e);
+    });
+    return Object.entries(groups).sort((a, b) => b[0].localeCompare(a[0]));
+  }, [filtered]);
+
+  const getBudgetColor = (date: string) => {
+    const foodTotal = dailyFoodTotals[date] || 0;
+    if (foodTotal === 0) return '';
+    return foodTotal > dailyFoodBudget ? 'border-l-4 border-l-destructive bg-destructive/5' : 'border-l-4 border-l-[hsl(var(--success))] bg-[hsl(var(--success))]/5';
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Room Expenses</h1>
-          <p className="text-sm text-muted-foreground">Monthly total: ₹{monthlyTotal.toLocaleString()}</p>
+          <p className="text-sm text-muted-foreground">Monthly total: ₹{monthlyTotal.toLocaleString()} · Food budget: ₹{dailyFoodBudget}/day</p>
         </div>
         <Dialog open={open} onOpenChange={o => { setOpen(o); if (!o) resetForm(); }}>
           <DialogTrigger asChild>
             <Button><Plus className="w-4 h-4 mr-1" />Add Expense</Button>
           </DialogTrigger>
-            <DialogContent>
-              <DialogHeader><DialogTitle>{editingId ? 'Edit' : 'Add'} Expense</DialogTitle></DialogHeader>
-              <form onSubmit={save} className="space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-2"><Label>Date</Label><Input type="date" value={date} onChange={e => setDate(e.target.value)} required /></div>
-                  <div className="space-y-2"><Label>Category</Label>
-                    <Select value={category} onValueChange={setCategory}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>{categories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-                    </Select>
-                  </div>
+          <DialogContent>
+            <DialogHeader><DialogTitle>{editingId ? 'Edit' : 'Add'} Expense</DialogTitle></DialogHeader>
+            <form onSubmit={save} className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2"><Label>Date</Label><Input type="date" value={date} onChange={e => setDate(e.target.value)} required /></div>
+                <div className="space-y-2"><Label>Category</Label>
+                  <Select value={category} onValueChange={setCategory}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>{categories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                  </Select>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-2"><Label>Amount (₹)</Label><Input type="number" value={amount} onChange={e => setAmount(e.target.value)} required /></div>
-                  <div className="space-y-2"><Label>Paid By</Label><Input value={paidBy} onChange={e => setPaidBy(e.target.value)} /></div>
-                </div>
-                <div className="space-y-2"><Label>Description</Label><Textarea value={description} onChange={e => setDescription(e.target.value)} /></div>
-                <Button className="w-full" type="submit">{editingId ? 'Update' : 'Add'} Expense</Button>
-              </form>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2"><Label>Amount (₹)</Label><Input type="number" value={amount} onChange={e => setAmount(e.target.value)} required /></div>
+                <div className="space-y-2"><Label>Paid By</Label><Input value={paidBy} onChange={e => setPaidBy(e.target.value)} /></div>
+              </div>
+              <div className="space-y-2"><Label>Description</Label><Textarea value={description} onChange={e => setDescription(e.target.value)} /></div>
+              <Button className="w-full" type="submit">{editingId ? 'Update' : 'Add'} Expense</Button>
+            </form>
           </DialogContent>
         </Dialog>
       </div>
@@ -154,30 +192,44 @@ const RoomExpenses = () => {
         </Select>
       </div>
 
-      <div className="space-y-3">
-        {filtered.length === 0 ? (
+      <div className="space-y-4">
+        {groupedByDate.length === 0 ? (
           <Card><CardContent className="py-8 text-center text-muted-foreground">No expenses found.</CardContent></Card>
-        ) : filtered.map((e: any) => (
-          <Card key={e.id}>
-            <CardContent className="flex items-center justify-between p-4">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-foreground">{e.description || e.category}</span>
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground">{e.category}</span>
-                </div>
-                <p className="text-xs text-muted-foreground mt-0.5">{e.date}{e.paid_by && ` · Paid by ${e.paid_by}`}</p>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="font-bold text-foreground">₹{Number(e.amount).toLocaleString()}</span>
-                {isAdmin && (
-                  <div className="flex gap-1">
-                    <Button variant="ghost" size="icon" onClick={() => startEdit(e)}><Pencil className="w-4 h-4" /></Button>
-                    <Button variant="ghost" size="icon" onClick={() => remove(e.id)}><Trash2 className="w-4 h-4 text-destructive" /></Button>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+        ) : groupedByDate.map(([dateKey, items]) => (
+          <div key={dateKey} className={`rounded-lg p-3 ${getBudgetColor(dateKey)}`}>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase">{dateKey}</p>
+              {dailyFoodTotals[dateKey] > 0 && (
+                <p className={`text-xs font-medium ${dailyFoodTotals[dateKey] > dailyFoodBudget ? 'text-destructive' : 'text-[hsl(var(--success))]'}`}>
+                  Food: ₹{dailyFoodTotals[dateKey].toLocaleString()} / ₹{dailyFoodBudget}
+                </p>
+              )}
+            </div>
+            <div className="space-y-2">
+              {items.map((e: any) => (
+                <Card key={e.id}>
+                  <CardContent className="flex items-center justify-between p-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-foreground text-sm">{e.description || e.category}</span>
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground">{e.category}</span>
+                      </div>
+                      {e.paid_by && <p className="text-xs text-muted-foreground mt-0.5">Paid by {e.paid_by}</p>}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="font-bold text-foreground">₹{Number(e.amount).toLocaleString()}</span>
+                      {isAdmin && (
+                        <div className="flex gap-1">
+                          <Button variant="ghost" size="icon" onClick={() => startEdit(e)}><Pencil className="w-4 h-4" /></Button>
+                          <Button variant="ghost" size="icon" onClick={() => remove(e.id)}><Trash2 className="w-4 h-4 text-destructive" /></Button>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
         ))}
       </div>
     </div>

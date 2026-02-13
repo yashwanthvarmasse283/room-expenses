@@ -5,8 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/sheet';
 import {
   LayoutDashboard, Receipt, PiggyBank, MessageSquare, BarChart3,
-  Settings, LogOut, Menu, Sun, Moon, Wallet, Users, MessagesSquare, Megaphone, UserCog, SlidersHorizontal,
-  CalendarCheck, CalendarClock, UtensilsCrossed
+  Settings, LogOut, Menu, Sun, Moon, Wallet, MessagesSquare, Megaphone, UserCog,
+  CalendarCheck, CalendarClock, ShieldCheck
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -16,9 +16,7 @@ const adminLinks = [
   { to: '/purse', label: 'Purse / Wallet', icon: Wallet },
   { to: '/contributions', label: 'Contributions', icon: CalendarCheck },
   { to: '/recurring-bills', label: 'Recurring Bills', icon: CalendarClock },
-  { to: '/food-toggle', label: "Who's Home", icon: UtensilsCrossed },
-  { to: '/manage-users', label: 'Manage Users', icon: Users },
-  { to: '/room-settings', label: 'Room Settings', icon: SlidersHorizontal },
+  { to: '/admin-control', label: 'Admin Control', icon: ShieldCheck },
   { to: '/room-chat', label: 'Room Chat', icon: MessagesSquare },
   { to: '/notice-board', label: 'Notice Board', icon: Megaphone },
   { to: '/messages', label: 'Messages', icon: MessageSquare },
@@ -34,7 +32,6 @@ const userLinks = [
   { to: '/purse', label: 'Purse / Wallet', icon: Wallet },
   { to: '/contributions', label: 'Contributions', icon: CalendarCheck },
   { to: '/recurring-bills', label: 'Recurring Bills', icon: CalendarClock },
-  { to: '/food-toggle', label: "Who's Home", icon: UtensilsCrossed },
   { to: '/room-chat', label: 'Room Chat', icon: MessagesSquare },
   { to: '/notice-board', label: 'Notice Board', icon: Megaphone },
   { to: '/messages', label: 'Messages', icon: MessageSquare },
