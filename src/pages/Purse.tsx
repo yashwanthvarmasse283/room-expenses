@@ -7,9 +7,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Plus, ArrowUpRight, ArrowDownLeft, Wallet, Pencil, Trash2 } from 'lucide-react';
+import { Plus, ArrowUpRight, ArrowDownLeft, Wallet, Pencil, Trash2, CreditCard } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+
+const UPI_ID = '9030726301@ybl';
+const UPI_NAME = 'R. Yashwanth Varma';
 
 const Purse = () => {
   const { profile, role } = useAuth();
@@ -23,6 +26,8 @@ const Purse = () => {
   const [date, setDate] = useState('');
   const [description, setDescription] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [pendingUpi, setPendingUpi] = useState(false);
+  const [upiAmount, setUpiAmount] = useState('');
 
   const adminId = isAdmin ? profile?.id : profile?.admin_id;
 
@@ -36,7 +41,6 @@ const Purse = () => {
     enabled: !!adminId,
   });
 
-  // Real-time
   useEffect(() => {
     if (!adminId) return;
     const channel = supabase
@@ -88,6 +92,32 @@ const Purse = () => {
     setOpen(true);
   };
 
+  const handlePayNow = () => {
+    if (!upiAmount || Number(upiAmount) <= 0) {
+      toast({ title: 'Enter amount', variant: 'destructive' });
+      return;
+    }
+    const url = `upi://pay?pa=${UPI_ID}&pn=${encodeURIComponent(UPI_NAME)}&am=${upiAmount}&cu=INR`;
+    window.location.href = url;
+    setPendingUpi(true);
+  };
+
+  const confirmUpiPayment = async () => {
+    if (!adminId || !upiAmount) return;
+    const { error } = await supabase.from('purse_transactions').insert({
+      admin_id: adminId,
+      type: 'inflow',
+      amount: Number(upiAmount),
+      date: new Date().toISOString().slice(0, 10),
+      description: `${profile?.name} - UPI Payment`,
+    });
+    if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
+    queryClient.invalidateQueries({ queryKey: ['purse_transactions'] });
+    toast({ title: 'Payment confirmed!', description: `₹${upiAmount} added to purse` });
+    setPendingUpi(false);
+    setUpiAmount('');
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -112,6 +142,34 @@ const Purse = () => {
           </Dialog>
         </div>
       </div>
+
+      {/* UPI Pay Now Card */}
+      <Card className="border-primary/30 bg-primary/5">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-2">
+            <CreditCard className="w-4 h-4 text-primary" />
+            Quick UPI Payment
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {pendingUpi ? (
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <p className="text-sm text-muted-foreground">Completed UPI payment of ₹{upiAmount}?</p>
+              <div className="flex gap-2">
+                <Button size="sm" onClick={confirmUpiPayment}>Confirm Payment</Button>
+                <Button size="sm" variant="ghost" onClick={() => { setPendingUpi(false); setUpiAmount(''); }}>Cancel</Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3 flex-wrap">
+              <Input type="number" placeholder="Amount" className="w-32" value={upiAmount} onChange={e => setUpiAmount(e.target.value)} />
+              <Button size="sm" onClick={handlePayNow}>
+                <CreditCard className="w-3 h-3 mr-1" />Pay Now
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card>

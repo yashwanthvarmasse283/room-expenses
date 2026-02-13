@@ -13,8 +13,7 @@ import Dashboard from "./pages/Dashboard";
 import RoomExpenses from "./pages/RoomExpenses";
 import PersonalExpenses from "./pages/PersonalExpenses";
 import Purse from "./pages/Purse";
-import ManageUsers from "./pages/ManageUsers";
-import RoomSettings from "./pages/RoomSettings";
+import AdminControlCenter from "./pages/AdminControlCenter";
 import Messages from "./pages/Messages";
 import RoomChat from "./pages/RoomChat";
 import NoticeBoard from "./pages/NoticeBoard";
@@ -24,7 +23,6 @@ import ProfileSettings from "./pages/ProfileSettings";
 import NotFound from "./pages/NotFound";
 import Contributions from "./pages/Contributions";
 import RecurringBills from "./pages/RecurringBills";
-import FoodToggle from "./pages/FoodToggle";
 import { Loader2 } from "lucide-react";
 
 const queryClient = new QueryClient();
@@ -63,14 +61,12 @@ const AppRoutes = () => (
       <Route path="/room-expenses" element={<RoomExpenses />} />
       <Route path="/personal-expenses" element={<PersonalExpenses />} />
       <Route path="/purse" element={<Purse />} />
-      <Route path="/manage-users" element={<ProtectedRoute adminOnly><ManageUsers /></ProtectedRoute>} />
-      <Route path="/room-settings" element={<ProtectedRoute adminOnly><RoomSettings /></ProtectedRoute>} />
+      <Route path="/admin-control" element={<ProtectedRoute adminOnly><AdminControlCenter /></ProtectedRoute>} />
       <Route path="/messages" element={<Messages />} />
       <Route path="/room-chat" element={<RoomChat />} />
       <Route path="/notice-board" element={<NoticeBoard />} />
       <Route path="/contributions" element={<Contributions />} />
       <Route path="/recurring-bills" element={<RecurringBills />} />
-      <Route path="/food-toggle" element={<FoodToggle />} />
       <Route path="/analytics" element={<Analytics />} />
       <Route path="/settings" element={<SettingsPage />} />
       <Route path="/profile-settings" element={<ProfileSettings />} />

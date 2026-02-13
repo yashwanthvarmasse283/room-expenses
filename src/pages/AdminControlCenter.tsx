@@ -4,25 +4,21 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Check, X, UserMinus, Shield } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Check, X, UserMinus, Shield, Save } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 
-const RoomSettings = () => {
+const AdminControlCenter = () => {
   const { profile } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [budgetInput, setBudgetInput] = useState('');
 
   const { data: users = [] } = useQuery({
     queryKey: ['admin_users', profile?.id],
@@ -34,6 +30,18 @@ const RoomSettings = () => {
     enabled: !!profile,
   });
 
+  const { data: adminProfile } = useQuery({
+    queryKey: ['admin_profile_budget', profile?.id],
+    queryFn: async () => {
+      if (!profile) return null;
+      const { data } = await supabase.from('profiles').select('daily_food_budget').eq('id', profile.id).single();
+      return data;
+    },
+    enabled: !!profile,
+  });
+
+  const currentBudget = (adminProfile as any)?.daily_food_budget ?? 120;
+
   const updateUser = async (id: string, approved: boolean) => {
     const { error } = await supabase.from('profiles').update({ approved }).eq('id', id);
     if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
@@ -42,11 +50,20 @@ const RoomSettings = () => {
   };
 
   const removeMember = async (member: any) => {
-    // Remove admin_id link and set approved false (effectively removing from room)
     const { error } = await supabase.from('profiles').update({ admin_id: null, approved: false }).eq('id', member.id);
     if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
     queryClient.invalidateQueries({ queryKey: ['admin_users'] });
-    toast({ title: 'Member Removed', description: `${member.name} has been removed from the room.` });
+    toast({ title: 'Member Removed', description: `${member.name} has been removed.` });
+  };
+
+  const saveBudget = async () => {
+    const val = Number(budgetInput || currentBudget);
+    if (!profile || isNaN(val) || val <= 0) return;
+    const { error } = await supabase.from('profiles').update({ daily_food_budget: val } as any).eq('id', profile.id);
+    if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
+    queryClient.invalidateQueries({ queryKey: ['admin_profile_budget'] });
+    toast({ title: 'Budget Updated', description: `Daily food budget set to ₹${val}` });
+    setBudgetInput('');
   };
 
   const pending = users.filter((u: any) => !u.approved);
@@ -55,8 +72,8 @@ const RoomSettings = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-foreground">Room Settings</h1>
-        <p className="text-sm text-muted-foreground">Manage members, approve requests, and configure your room.</p>
+        <h1 className="text-2xl font-bold text-foreground">Admin Control Center</h1>
+        <p className="text-sm text-muted-foreground">Manage members, settings, and room configuration.</p>
       </div>
 
       {/* Admin Info */}
@@ -69,6 +86,23 @@ const RoomSettings = () => {
           <p className="font-medium text-foreground">{profile?.name}</p>
           <p className="text-xs text-muted-foreground">{profile?.email}</p>
           <p className="text-xs text-muted-foreground mt-1">Admin Code: <span className="font-mono font-semibold text-primary">{profile?.admin_code}</span></p>
+        </CardContent>
+      </Card>
+
+      {/* Daily Food Budget */}
+      <Card>
+        <CardHeader><CardTitle className="text-base">Daily Food Budget Limit</CardTitle></CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground mb-3">Current limit: <span className="font-bold text-foreground">₹{currentBudget}</span>. Food expenses exceeding this per day will be highlighted in red on Room Expenses.</p>
+          <div className="flex items-center gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs">New Limit (₹)</Label>
+              <Input type="number" className="w-32" placeholder={String(currentBudget)} value={budgetInput} onChange={e => setBudgetInput(e.target.value)} />
+            </div>
+            <Button size="sm" className="mt-5" onClick={saveBudget}>
+              <Save className="w-3 h-3 mr-1" />Save
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
@@ -140,4 +174,4 @@ const RoomSettings = () => {
   );
 };
 
-export default RoomSettings;
+export default AdminControlCenter;

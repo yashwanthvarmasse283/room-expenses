@@ -30,7 +30,7 @@ Deno.serve(async (req) => {
     const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
     const payload = await req.json();
 
-    // Check if this is a cron-triggered call for reminders or bills
+    // Cron-triggered actions
     if (payload.action === "contribution_reminders") {
       return await handleContributionReminders(supabase, TWILIO_SID, TWILIO_TOKEN, TWILIO_FROM);
     }
@@ -38,21 +38,17 @@ Deno.serve(async (req) => {
       return await handleBillReminders(supabase, TWILIO_SID, TWILIO_TOKEN, TWILIO_FROM);
     }
 
-    // Regular webhook payload
     const { table, record } = payload as WebhookPayload;
 
     let adminId: string | null = null;
     let messageBody = "";
-    let senderName = "";
 
     switch (table) {
       case "room_expenses":
         adminId = record.admin_id;
-        senderName = record.paid_by || "Someone";
         break;
       case "purse_transactions":
         adminId = record.admin_id;
-        senderName = record.description?.split(":")[0] || "Someone";
         break;
       case "notices":
         adminId = record.admin_id;
@@ -75,7 +71,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Calculate current purse balance
+    // Calculate purse balance
     const { data: purseData } = await supabase
       .from("purse_transactions")
       .select("type, amount")
@@ -87,18 +83,21 @@ Deno.serve(async (req) => {
       0
     );
 
-    // Build context-aware messages with balance
+    // Build single clean message per event (no duplicates)
     if (table === "room_expenses") {
-      messageBody = `💸 ${senderName} added ${record.category} expense: ₹${record.amount}${record.description ? ` for "${record.description}"` : ""}. Remaining Purse: ₹${purseBalance.toLocaleString()}.`;
+      // Only "Spent" alert - no "User added expense" intro
+      messageBody = `💸 Spent: ₹${record.amount} on ${record.category}${record.description ? ` (${record.description})` : ""}. Purse Balance: ₹${purseBalance.toLocaleString()}.`;
     } else if (table === "purse_transactions") {
       if (record.type === "inflow") {
-        messageBody = `💰 ₹${record.amount} added to purse: "${record.description || "Money Added"}". Current Purse: ₹${purseBalance.toLocaleString()}.`;
+        // Only "Money Added" alert - no "User added money" intro
+        const userName = record.description?.includes(" - ") ? record.description.split(" - ")[0] : "Someone";
+        messageBody = `💰 Money Added: ₹${record.amount} by ${userName}. Total Balance: ₹${purseBalance.toLocaleString()}.`;
       } else {
-        messageBody = `💳 ₹${record.amount} spent from purse: "${record.description || "Expense"}". Remaining Purse: ₹${purseBalance.toLocaleString()}.`;
+        messageBody = `💳 Spent: ₹${record.amount} — ${record.description || "Expense"}. Purse Balance: ₹${purseBalance.toLocaleString()}.`;
       }
     }
 
-    // Fetch all room members
+    // Fetch members
     const { data: members } = await supabase
       .from("profiles")
       .select("mobile_number, name, user_id")
@@ -115,69 +114,26 @@ Deno.serve(async (req) => {
     const results: any[] = [];
 
     for (const member of members) {
-      if (table === "chat_messages" && member.user_id === record.sender_id) {
-        continue;
-      }
-
-      const phone = member.mobile_number!.startsWith("+")
-        ? member.mobile_number!
-        : `+${member.mobile_number}`;
+      if (table === "chat_messages" && member.user_id === record.sender_id) continue;
 
       try {
-        const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json`;
-        const body = new URLSearchParams({
-          To: `whatsapp:${phone}`,
-          From: `whatsapp:${TWILIO_FROM}`,
-          Body: messageBody,
-        });
-
-        const resp = await fetch(twilioUrl, {
-          method: "POST",
-          headers: {
-            Authorization: "Basic " + btoa(`${TWILIO_SID}:${TWILIO_TOKEN}`),
-            "Content-Type": "application/x-www-form-urlencoded",
-          },
-          body: body.toString(),
-        });
-
-        const result = await resp.json();
-        results.push({ phone, status: resp.status, sid: result.sid });
+        await sendWhatsApp(TWILIO_SID, TWILIO_TOKEN, TWILIO_FROM, member.mobile_number!, messageBody);
+        results.push({ phone: member.mobile_number, sent: true });
       } catch (err) {
-        results.push({ phone, error: String(err) });
+        results.push({ phone: member.mobile_number, error: String(err) });
       }
     }
 
-    // Low balance alert
+    // Low balance alert (only once, same message loop)
     if (
       purseBalance < LOW_BALANCE_THRESHOLD &&
       (table === "room_expenses" || (table === "purse_transactions" && record.type === "outflow"))
     ) {
-      const alertMsg = `⚠️ LOW BALANCE ALERT: Room purse is at ₹${purseBalance.toLocaleString()}. Please add funds to cover upcoming bills!`;
-
+      const alertMsg = `⚠️ LOW BALANCE: Purse at ₹${purseBalance.toLocaleString()}. Please top up!`;
       for (const member of members) {
-        const phone = member.mobile_number!.startsWith("+")
-          ? member.mobile_number!
-          : `+${member.mobile_number}`;
-
         try {
-          const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json`;
-          const body = new URLSearchParams({
-            To: `whatsapp:${phone}`,
-            From: `whatsapp:${TWILIO_FROM}`,
-            Body: alertMsg,
-          });
-
-          await fetch(twilioUrl, {
-            method: "POST",
-            headers: {
-              Authorization: "Basic " + btoa(`${TWILIO_SID}:${TWILIO_TOKEN}`),
-              "Content-Type": "application/x-www-form-urlencoded",
-            },
-            body: body.toString(),
-          });
-        } catch (_) {
-          // Don't block main flow
-        }
+          await sendWhatsApp(TWILIO_SID, TWILIO_TOKEN, TWILIO_FROM, member.mobile_number!, alertMsg);
+        } catch (_) { /* don't block */ }
       }
     }
 
@@ -192,7 +148,6 @@ Deno.serve(async (req) => {
   }
 });
 
-// Send WhatsApp to a single phone
 async function sendWhatsApp(sid: string, token: string, from: string, to: string, body: string) {
   const phone = to.startsWith("+") ? to : `+${to}`;
   const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`;
@@ -211,10 +166,7 @@ async function sendWhatsApp(sid: string, token: string, from: string, to: string
   });
 }
 
-// Handle contribution term-end reminders (10th, 20th, 30th)
-async function handleContributionReminders(
-  supabase: any, sid: string, token: string, from: string
-) {
+async function handleContributionReminders(supabase: any, sid: string, token: string, from: string) {
   const now = new Date();
   const day = now.getDate();
   const month = now.getMonth() + 1;
@@ -223,30 +175,23 @@ async function handleContributionReminders(
   let term: number;
   if (day === 10) term = 1;
   else if (day === 20) term = 2;
-  else if (day >= 28) term = 3; // Last day handling
+  else if (day >= 28) term = 3;
   else {
     return new Response(JSON.stringify({ ok: true, message: "Not a reminder day" }), {
       headers: { "Content-Type": "application/json" },
     });
   }
 
-  // Get all admin profiles (rooms)
-  const { data: admins } = await supabase
-    .from("profiles")
-    .select("id")
-    .not("admin_code", "is", null);
-
+  const { data: admins } = await supabase.from("profiles").select("id").not("admin_code", "is", null);
   const results: any[] = [];
 
   for (const admin of admins || []) {
-    // Get members
     const { data: members } = await supabase
       .from("profiles")
       .select("user_id, name, mobile_number")
       .or(`id.eq.${admin.id},admin_id.eq.${admin.id}`)
       .not("mobile_number", "is", null);
 
-    // Get paid contributions
     const { data: paid } = await supabase
       .from("monthly_contributions")
       .select("user_id")
@@ -277,20 +222,12 @@ async function handleContributionReminders(
   });
 }
 
-// Handle bill reminders (24h before due)
-async function handleBillReminders(
-  supabase: any, sid: string, token: string, from: string
-) {
+async function handleBillReminders(supabase: any, sid: string, token: string, from: string) {
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
   const dueDay = tomorrow.getDate();
 
-  const { data: bills } = await supabase
-    .from("recurring_bills")
-    .select("*")
-    .eq("due_day", dueDay)
-    .eq("active", true);
-
+  const { data: bills } = await supabase.from("recurring_bills").select("*").eq("due_day", dueDay).eq("active", true);
   const results: any[] = [];
 
   for (const bill of bills || []) {
@@ -300,7 +237,6 @@ async function handleBillReminders(
       .or(`id.eq.${bill.admin_id},admin_id.eq.${bill.admin_id}`)
       .not("mobile_number", "is", null);
 
-    // Get purse balance
     const { data: purseData } = await supabase
       .from("purse_transactions")
       .select("type, amount")
@@ -311,7 +247,7 @@ async function handleBillReminders(
       0
     );
 
-    const msg = `🔔 Bill Reminder: "${bill.name}" (₹${Number(bill.amount).toLocaleString()}) is due tomorrow (${dueDay}${["st", "nd", "rd"][dueDay - 1] || "th"}). Current Purse: ₹${balance.toLocaleString()}.`;
+    const msg = `🔔 Bill Reminder: "${bill.name}" (₹${Number(bill.amount).toLocaleString()}) is due tomorrow. Purse Balance: ₹${balance.toLocaleString()}.`;
 
     for (const member of members || []) {
       if (member.mobile_number) {
