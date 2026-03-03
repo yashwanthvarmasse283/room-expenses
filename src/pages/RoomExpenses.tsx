@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
@@ -42,7 +42,6 @@ const RoomExpenses = () => {
     enabled: !!adminId,
   });
 
-  // Fetch daily food budget
   const { data: budgetData } = useQuery({
     queryKey: ['daily_food_budget', adminId],
     queryFn: async () => {
@@ -55,11 +54,11 @@ const RoomExpenses = () => {
 
   const dailyFoodBudget = (budgetData as any)?.daily_food_budget ?? 120;
 
-  // Group expenses by date for budget highlighting
+  // Case-insensitive food totals including 'Water'
   const dailyFoodTotals = useMemo(() => {
     const map: Record<string, number> = {};
     expenses.forEach((e: any) => {
-      if (e.category === 'Food') {
+      if (e.category?.toLowerCase() === 'food') {
         map[e.date] = (map[e.date] || 0) + Number(e.amount);
       }
     });
@@ -119,7 +118,7 @@ const RoomExpenses = () => {
 
   const filtered = expenses.filter((e: any) => {
     const matchSearch = !search || (e.description || '').toLowerCase().includes(search.toLowerCase()) || e.category.toLowerCase().includes(search.toLowerCase());
-    const matchCat = filterCat === 'all' || e.category === filterCat;
+    const matchCat = filterCat === 'all' || e.category.toLowerCase() === filterCat.toLowerCase();
     return matchSearch && matchCat;
   });
 
@@ -128,7 +127,6 @@ const RoomExpenses = () => {
     return d.getMonth() === n.getMonth() && d.getFullYear() === n.getFullYear();
   }).reduce((s: number, e: any) => s + Number(e.amount), 0);
 
-  // Group filtered expenses by date for display
   const groupedByDate = useMemo(() => {
     const groups: Record<string, any[]> = {};
     filtered.forEach((e: any) => {

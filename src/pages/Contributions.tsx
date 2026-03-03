@@ -4,14 +4,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { CheckCircle2, Clock, History, CalendarDays, CreditCard } from 'lucide-react';
+import { CheckCircle2, Clock, History, CalendarDays, CreditCard, Copy } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useMemo, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
+import { triggerUpiPayment, getUpiVpa, getUpiQrValue } from '@/lib/upiHelper';
+import { QRCodeSVG } from 'qrcode.react';
 
 const TERM_LABELS: Record<number, string> = { 1: '1st – 10th', 2: '11th – 20th', 3: '21st – 30th' };
-const UPI_ID = '9030726301@ybl';
-const UPI_NAME = 'R. Yashwanth Varma';
 
 const getCurrentTerm = () => {
   const day = new Date().getDate();
@@ -33,6 +33,19 @@ const Contributions = () => {
   const [showHistory, setShowHistory] = useState(false);
   const currentTerm = getCurrentTerm();
   const [pendingPayment, setPendingPayment] = useState<{ memberId: string; memberName: string; term: number } | null>(null);
+  const [showFallback, setShowFallback] = useState(false);
+
+  // Check if admin contributions are enabled
+  const { data: adminProfile } = useQuery({
+    queryKey: ['admin_profile_contrib', adminId],
+    queryFn: async () => {
+      if (!adminId) return null;
+      const { data } = await supabase.from('profiles').select('admin_contributions_enabled').eq('id', adminId).single();
+      return data;
+    },
+    enabled: !!adminId,
+  });
+  const adminContribEnabled = (adminProfile as any)?.admin_contributions_enabled ?? true;
 
   const { data: members = [] } = useQuery({
     queryKey: ['room_members_contrib', adminId],
@@ -76,59 +89,28 @@ const Contributions = () => {
 
   const silentMarkPaid = async (memberId: string, memberName: string, term: number, amount?: number) => {
     if (!adminId) return;
-
-    // 1. Mark contribution as paid
-    const { data: existing } = await supabase
-      .from('monthly_contributions')
-      .select('id')
-      .eq('admin_id', adminId)
-      .eq('user_id', memberId)
-      .eq('year', year)
-      .eq('month', month)
-      .eq('term', term)
-      .maybeSingle();
+    const { data: existing } = await supabase.from('monthly_contributions').select('id').eq('admin_id', adminId).eq('user_id', memberId).eq('year', year).eq('month', month).eq('term', term).maybeSingle();
 
     if (existing) {
-      const { error } = await supabase
-        .from('monthly_contributions')
-        .update({ paid: true, paid_at: new Date().toISOString(), marked_by: user!.id })
-        .eq('id', existing.id);
+      const { error } = await supabase.from('monthly_contributions').update({ paid: true, paid_at: new Date().toISOString(), marked_by: user!.id }).eq('id', existing.id);
       if (error) throw error;
     } else {
-      const { error } = await supabase
-        .from('monthly_contributions')
-        .insert({
-          admin_id: adminId,
-          user_id: memberId,
-          user_name: memberName,
-          year, month, term,
-          paid: true,
-          paid_at: new Date().toISOString(),
-          marked_by: user!.id,
-        });
+      const { error } = await supabase.from('monthly_contributions').insert({ admin_id: adminId, user_id: memberId, user_name: memberName, year, month, term, paid: true, paid_at: new Date().toISOString(), marked_by: user!.id });
       if (error) throw error;
     }
 
-    // 2. Log purse inflow
     if (amount && amount > 0) {
-      await supabase.from('purse_transactions').insert({
-        admin_id: adminId,
-        type: 'inflow',
-        amount,
-        date: new Date().toISOString().slice(0, 10),
-        description: `${memberName} - Term ${term} contribution`,
-      });
+      await supabase.from('purse_transactions').insert({ admin_id: adminId, type: 'inflow', amount, date: new Date().toISOString().slice(0, 10), description: `${memberName} - Term ${term} contribution` });
       qc.invalidateQueries({ queryKey: ['purse_transactions'] });
     }
-
     qc.invalidateQueries({ queryKey: ['contributions'] });
   };
 
   const handlePayNow = (memberId: string, memberName: string, term: number) => {
-    // Open UPI intent
-    const upiUrl = `upi://pay?pa=${UPI_ID}&pn=${encodeURIComponent(UPI_NAME)}&cu=INR`;
-    window.location.href = upiUrl;
+    triggerUpiPayment();
     setPendingPayment({ memberId, memberName, term });
+    // Show fallback after a delay
+    setTimeout(() => setShowFallback(true), 3000);
   };
 
   const confirmPayment = useMutation({
@@ -136,10 +118,7 @@ const Contributions = () => {
       if (!pendingPayment) throw new Error('No pending payment');
       await silentMarkPaid(pendingPayment.memberId, pendingPayment.memberName, pendingPayment.term);
     },
-    onSuccess: () => {
-      toast({ title: 'Payment confirmed & marked as paid!' });
-      setPendingPayment(null);
-    },
+    onSuccess: () => { toast({ title: 'Payment confirmed & marked as paid!' }); setPendingPayment(null); setShowFallback(false); },
     onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
   });
 
@@ -147,47 +126,31 @@ const Contributions = () => {
     mutationFn: async ({ memberId, memberName, term }: { memberId: string; memberName: string; term: number }) => {
       await silentMarkPaid(memberId, memberName, term);
     },
-    onSuccess: () => {
-      toast({ title: 'Marked as paid!' });
-    },
+    onSuccess: () => toast({ title: 'Marked as paid!' }),
     onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
   });
 
   const markUnpaid = useMutation({
     mutationFn: async ({ memberId, term }: { memberId: string; term: number }) => {
-      const { error } = await supabase
-        .from('monthly_contributions')
-        .delete()
-        .eq('admin_id', adminId!)
-        .eq('user_id', memberId)
-        .eq('year', year)
-        .eq('month', month)
-        .eq('term', term);
+      const { error } = await supabase.from('monthly_contributions').delete().eq('admin_id', adminId!).eq('user_id', memberId).eq('year', year).eq('month', month).eq('term', term);
       if (error) throw error;
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['contributions'] });
-      toast({ title: 'Marked as unpaid' });
-    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['contributions'] }); toast({ title: 'Marked as unpaid' }); },
     onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
   });
 
-  const getStatus = (memberId: string, term: number) => {
-    return contributions.find((c: any) => c.user_id === memberId && c.term === term);
+  const getStatus = (memberId: string, term: number) => contributions.find((c: any) => c.user_id === memberId && c.term === term);
+  const isCurrentMonth = year === now.getFullYear() && month === now.getMonth() + 1;
+  const monthOptions = useMemo(() => Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1), label: new Date(2000, i).toLocaleString('default', { month: 'long' }) })), []);
+  const yearOptions = useMemo(() => { const y = now.getFullYear(); return [y - 1, y, y + 1].map(v => ({ value: String(v), label: String(v) })); }, []);
+
+  const copyVpa = () => {
+    navigator.clipboard.writeText(getUpiVpa());
+    toast({ title: 'VPA Copied', description: getUpiVpa() });
   };
 
-  const isCurrentMonth = year === now.getFullYear() && month === now.getMonth() + 1;
-
-  const monthOptions = useMemo(() =>
-    Array.from({ length: 12 }, (_, i) => ({
-      value: String(i + 1),
-      label: new Date(2000, i).toLocaleString('default', { month: 'long' }),
-    })), []);
-
-  const yearOptions = useMemo(() => {
-    const y = now.getFullYear();
-    return [y - 1, y, y + 1].map(v => ({ value: String(v), label: String(v) }));
-  }, []);
+  // Determine if admin member should see the add button
+  const adminMember = members.find((m: any) => m.id === adminId);
 
   return (
     <div className="space-y-6">
@@ -199,22 +162,35 @@ const Contributions = () => {
           </p>
         </div>
         <Button variant={showHistory ? 'default' : 'outline'} size="sm" onClick={() => setShowHistory(!showHistory)}>
-          <History className="w-4 h-4 mr-1" />
-          {showHistory ? 'Current' : 'History'}
+          <History className="w-4 h-4 mr-1" />{showHistory ? 'Current' : 'History'}
         </Button>
       </div>
 
-      {/* Pending UPI confirmation banner */}
       {pendingPayment && (
         <Card className="border-primary/50 bg-primary/5">
-          <CardContent className="py-4 flex items-center justify-between flex-wrap gap-3">
-            <div>
-              <p className="font-medium text-foreground">Payment initiated for Term {pendingPayment.term}</p>
-              <p className="text-sm text-muted-foreground">Completed your UPI payment? Confirm below.</p>
+          <CardContent className="py-4 space-y-3">
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <p className="font-medium text-foreground">Payment initiated for Term {pendingPayment.term}</p>
+                <p className="text-sm text-muted-foreground">Completed your UPI payment? Confirm below.</p>
+              </div>
+              <Button onClick={() => confirmPayment.mutate()} disabled={confirmPayment.isPending}>
+                <CheckCircle2 className="w-4 h-4 mr-1" />Confirm Payment
+              </Button>
             </div>
-            <Button onClick={() => confirmPayment.mutate()} disabled={confirmPayment.isPending}>
-              <CheckCircle2 className="w-4 h-4 mr-1" />Confirm Payment
-            </Button>
+            {showFallback && (
+              <div className="border-t border-border pt-3 space-y-3">
+                <p className="text-sm text-muted-foreground">UPI app didn't open? Use these alternatives:</p>
+                <div className="flex items-center gap-4 flex-wrap">
+                  <Button variant="outline" size="sm" onClick={copyVpa}>
+                    <Copy className="w-3 h-3 mr-1" />Copy VPA: {getUpiVpa()}
+                  </Button>
+                  <div className="bg-background p-2 rounded-lg border">
+                    <QRCodeSVG value={getUpiQrValue()} size={120} />
+                  </div>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
@@ -224,15 +200,11 @@ const Contributions = () => {
           <CardContent className="pt-4 flex gap-3 flex-wrap">
             <Select value={String(month)} onValueChange={(v) => setMonth(Number(v))}>
               <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {monthOptions.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
-              </SelectContent>
+              <SelectContent>{monthOptions.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}</SelectContent>
             </Select>
             <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
               <SelectTrigger className="w-24"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {yearOptions.map(y => <SelectItem key={y.value} value={y.value}>{y.label}</SelectItem>)}
-              </SelectContent>
+              <SelectContent>{yearOptions.map(y => <SelectItem key={y.value} value={y.value}>{y.label}</SelectItem>)}</SelectContent>
             </Select>
           </CardContent>
         </Card>
@@ -244,12 +216,9 @@ const Contributions = () => {
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-base flex items-center gap-2">
-                  <CalendarDays className="w-4 h-4 text-primary" />
-                  Term {term}: {TERM_LABELS[term]}
+                  <CalendarDays className="w-4 h-4 text-primary" />Term {term}: {TERM_LABELS[term]}
                 </CardTitle>
-                {isCurrentMonth && term === currentTerm && (
-                  <Badge variant="default" className="text-xs">Current</Badge>
-                )}
+                {isCurrentMonth && term === currentTerm && <Badge variant="default" className="text-xs">Current</Badge>}
               </div>
             </CardHeader>
             <CardContent>
@@ -257,17 +226,17 @@ const Contributions = () => {
                 {members.map((m: any) => {
                   const record = getStatus(m.user_id, term);
                   const isPaid = record?.paid === true;
-                  const canMark = isAdmin || m.user_id === user?.id;
                   const isSelf = m.user_id === user?.id;
+                  const isAdminMember = m.id === adminId;
+                  // Users can only edit/mark their own. Admins can edit all.
+                  const canMark = isAdmin || isSelf;
+                  // Hide admin's contribution button if disabled
+                  const hideContribButton = isAdmin && isAdminMember && !adminContribEnabled;
 
                   return (
                     <div key={m.user_id} className="flex items-center justify-between py-2 px-3 rounded-lg bg-muted/50">
                       <div className="flex items-center gap-2">
-                        {isPaid ? (
-                          <CheckCircle2 className="w-4 h-4 text-[hsl(var(--success))]" />
-                        ) : (
-                          <Clock className="w-4 h-4 text-[hsl(var(--warning))]" />
-                        )}
+                        {isPaid ? <CheckCircle2 className="w-4 h-4 text-[hsl(var(--success))]" /> : <Clock className="w-4 h-4 text-[hsl(var(--warning))]" />}
                         <span className="text-sm font-medium text-foreground">{m.name}</span>
                       </div>
                       <div className="flex items-center gap-2">
@@ -275,22 +244,18 @@ const Contributions = () => {
                           <>
                             <Badge variant="secondary" className="text-xs bg-[hsl(var(--success))]/10 text-[hsl(var(--success))]">Paid</Badge>
                             {isAdmin && (
-                              <Button size="sm" variant="ghost" className="text-xs h-7" onClick={() => markUnpaid.mutate({ memberId: m.user_id, term })}>
-                                Undo
-                              </Button>
+                              <Button size="sm" variant="ghost" className="text-xs h-7" onClick={() => markUnpaid.mutate({ memberId: m.user_id, term })}>Undo</Button>
                             )}
                           </>
                         ) : (
-                          canMark && (
+                          canMark && !hideContribButton && (
                             <div className="flex items-center gap-1">
                               {isSelf && (
                                 <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => handlePayNow(m.user_id, m.name, term)}>
                                   <CreditCard className="w-3 h-3 mr-1" />Pay Now
                                 </Button>
                               )}
-                              <Button size="sm" className="h-7 text-xs" onClick={() => markPaid.mutate({ memberId: m.user_id, memberName: m.name, term })}>
-                                Mark Paid
-                              </Button>
+                              <Button size="sm" className="h-7 text-xs" onClick={() => markPaid.mutate({ memberId: m.user_id, memberName: m.name, term })}>Mark Paid</Button>
                             </div>
                           )
                         )}

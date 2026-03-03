@@ -6,20 +6,22 @@ import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/s
 import {
   LayoutDashboard, Receipt, PiggyBank, MessageSquare, BarChart3,
   Settings, LogOut, Menu, Sun, Moon, Wallet, MessagesSquare, Megaphone, UserCog,
-  CalendarCheck, CalendarClock, ShieldCheck
+  CalendarCheck, CalendarClock, ShieldCheck, CreditCard
 } from 'lucide-react';
 import { useState } from 'react';
 
 const adminLinks = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/room-expenses', label: 'Room Expenses', icon: Receipt },
-  { to: '/purse', label: 'Purse / Wallet', icon: Wallet },
+  { to: '/purse', label: 'Room Fund', icon: Wallet },
   { to: '/contributions', label: 'Contributions', icon: CalendarCheck },
   { to: '/recurring-bills', label: 'Recurring Bills', icon: CalendarClock },
   { to: '/admin-control', label: 'Admin Control', icon: ShieldCheck },
   { to: '/room-chat', label: 'Room Chat', icon: MessagesSquare },
   { to: '/notice-board', label: 'Notice Board', icon: Megaphone },
   { to: '/messages', label: 'Messages', icon: MessageSquare },
+  { to: '/personal-wallet', label: 'Personal Wallet', icon: CreditCard },
+  { to: '/personal-expenses', label: 'Personal Expenses', icon: PiggyBank },
   { to: '/analytics', label: 'Analytics', icon: BarChart3 },
   { to: '/profile-settings', label: 'Profile', icon: UserCog },
   { to: '/settings', label: 'Settings', icon: Settings },
@@ -28,13 +30,14 @@ const adminLinks = [
 const userLinks = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/room-expenses', label: 'Room Expenses', icon: Receipt },
-  { to: '/personal-expenses', label: 'Personal Expenses', icon: PiggyBank },
-  { to: '/purse', label: 'Purse / Wallet', icon: Wallet },
+  { to: '/purse', label: 'Room Fund', icon: Wallet },
   { to: '/contributions', label: 'Contributions', icon: CalendarCheck },
   { to: '/recurring-bills', label: 'Recurring Bills', icon: CalendarClock },
   { to: '/room-chat', label: 'Room Chat', icon: MessagesSquare },
   { to: '/notice-board', label: 'Notice Board', icon: Megaphone },
   { to: '/messages', label: 'Messages', icon: MessageSquare },
+  { to: '/personal-wallet', label: 'Personal Wallet', icon: CreditCard },
+  { to: '/personal-expenses', label: 'Personal Expenses', icon: PiggyBank },
   { to: '/analytics', label: 'Analytics', icon: BarChart3 },
   { to: '/profile-settings', label: 'Profile', icon: UserCog },
   { to: '/settings', label: 'Settings', icon: Settings },

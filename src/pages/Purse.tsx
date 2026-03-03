@@ -7,12 +7,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Plus, ArrowUpRight, ArrowDownLeft, Wallet, Pencil, Trash2, CreditCard } from 'lucide-react';
+import { Plus, ArrowUpRight, ArrowDownLeft, Wallet, Pencil, Trash2, CreditCard, Copy } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-
-const UPI_ID = '9030726301@ybl';
-const UPI_NAME = 'R. Yashwanth Varma';
+import { triggerUpiPayment, getUpiVpa, getUpiQrValue } from '@/lib/upiHelper';
+import { QRCodeSVG } from 'qrcode.react';
 
 const Purse = () => {
   const { profile, role } = useAuth();
@@ -28,6 +27,7 @@ const Purse = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [pendingUpi, setPendingUpi] = useState(false);
   const [upiAmount, setUpiAmount] = useState('');
+  const [showFallback, setShowFallback] = useState(false);
 
   const adminId = isAdmin ? profile?.id : profile?.admin_id;
 
@@ -63,14 +63,11 @@ const Purse = () => {
     if (!adminId) return;
 
     if (editingId) {
-      const { error } = await supabase.from('purse_transactions')
-        .update({ amount: Number(amount), date, description, type: txType })
-        .eq('id', editingId);
+      const { error } = await supabase.from('purse_transactions').update({ amount: Number(amount), date, description, type: txType }).eq('id', editingId);
       if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
       toast({ title: 'Updated' });
     } else {
-      const { error } = await supabase.from('purse_transactions')
-        .insert({ admin_id: adminId, type: txType, amount: Number(amount), date, description });
+      const { error } = await supabase.from('purse_transactions').insert({ admin_id: adminId, type: txType, amount: Number(amount), date, description });
       if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
       toast({ title: txType === 'inflow' ? 'Money Added' : 'Expense Added', description: `₹${amount}` });
     }
@@ -97,17 +94,15 @@ const Purse = () => {
       toast({ title: 'Enter amount', variant: 'destructive' });
       return;
     }
-    const url = `upi://pay?pa=${UPI_ID}&pn=${encodeURIComponent(UPI_NAME)}&am=${upiAmount}&cu=INR`;
-    window.location.href = url;
+    triggerUpiPayment(Number(upiAmount));
     setPendingUpi(true);
+    setTimeout(() => setShowFallback(true), 3000);
   };
 
   const confirmUpiPayment = async () => {
     if (!adminId || !upiAmount) return;
     const { error } = await supabase.from('purse_transactions').insert({
-      admin_id: adminId,
-      type: 'inflow',
-      amount: Number(upiAmount),
+      admin_id: adminId, type: 'inflow', amount: Number(upiAmount),
       date: new Date().toISOString().slice(0, 10),
       description: `${profile?.name} - UPI Payment`,
     });
@@ -116,12 +111,28 @@ const Purse = () => {
     toast({ title: 'Payment confirmed!', description: `₹${upiAmount} added to purse` });
     setPendingUpi(false);
     setUpiAmount('');
+    setShowFallback(false);
   };
+
+  const copyVpa = () => {
+    navigator.clipboard.writeText(getUpiVpa());
+    toast({ title: 'VPA Copied', description: getUpiVpa() });
+  };
+
+  // Group transactions by date
+  const groupedByDate = (() => {
+    const groups: Record<string, any[]> = {};
+    transactions.forEach((t: any) => {
+      if (!groups[t.date]) groups[t.date] = [];
+      groups[t.date].push(t);
+    });
+    return Object.entries(groups).sort((a, b) => b[0].localeCompare(a[0]));
+  })();
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-2xl font-bold text-foreground">Purse / Wallet</h1>
+        <h1 className="text-2xl font-bold text-foreground">Room Fund</h1>
         <div className="flex gap-2">
           <Dialog open={open} onOpenChange={o => { setOpen(o); if (!o) resetForm(); }}>
             <DialogTrigger asChild>
@@ -147,18 +158,32 @@ const Purse = () => {
       <Card className="border-primary/30 bg-primary/5">
         <CardHeader className="pb-2">
           <CardTitle className="text-base flex items-center gap-2">
-            <CreditCard className="w-4 h-4 text-primary" />
-            Quick UPI Payment
+            <CreditCard className="w-4 h-4 text-primary" />Quick UPI Payment
           </CardTitle>
         </CardHeader>
         <CardContent>
           {pendingUpi ? (
-            <div className="flex items-center justify-between flex-wrap gap-3">
-              <p className="text-sm text-muted-foreground">Completed UPI payment of ₹{upiAmount}?</p>
-              <div className="flex gap-2">
-                <Button size="sm" onClick={confirmUpiPayment}>Confirm Payment</Button>
-                <Button size="sm" variant="ghost" onClick={() => { setPendingUpi(false); setUpiAmount(''); }}>Cancel</Button>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <p className="text-sm text-muted-foreground">Completed UPI payment of ₹{upiAmount}?</p>
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={confirmUpiPayment}>Confirm Payment</Button>
+                  <Button size="sm" variant="ghost" onClick={() => { setPendingUpi(false); setUpiAmount(''); setShowFallback(false); }}>Cancel</Button>
+                </div>
               </div>
+              {showFallback && (
+                <div className="border-t border-border pt-3 space-y-3">
+                  <p className="text-sm text-muted-foreground">UPI app didn't open? Use these alternatives:</p>
+                  <div className="flex items-center gap-4 flex-wrap">
+                    <Button variant="outline" size="sm" onClick={copyVpa}>
+                      <Copy className="w-3 h-3 mr-1" />Copy VPA: {getUpiVpa()}
+                    </Button>
+                    <div className="bg-background p-2 rounded-lg border">
+                      <QRCodeSVG value={getUpiQrValue(Number(upiAmount))} size={120} />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div className="flex items-center gap-3 flex-wrap">
@@ -198,29 +223,35 @@ const Purse = () => {
       <Card>
         <CardHeader><CardTitle className="text-base">Transaction History</CardTitle></CardHeader>
         <CardContent>
-          {transactions.length === 0 ? (
+          {groupedByDate.length === 0 ? (
             <p className="text-sm text-muted-foreground">No transactions yet.</p>
           ) : (
-            <div className="space-y-3">
-              {transactions.map((t: any) => (
-                <div key={t.id} className="flex items-center justify-between text-sm border-b border-border pb-3 last:border-0">
-                  <div className="flex items-center gap-3">
-                    {t.type === 'inflow' ? <ArrowDownLeft className="w-4 h-4 text-[hsl(var(--success))]" /> : <ArrowUpRight className="w-4 h-4 text-destructive" />}
-                    <div>
-                      <p className="font-medium text-foreground">{t.description || (t.type === 'inflow' ? 'Money Added' : 'Expense')}</p>
-                      <p className="text-xs text-muted-foreground">{t.date}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className={`font-bold ${t.type === 'inflow' ? 'text-[hsl(var(--success))]' : 'text-destructive'}`}>
-                      {t.type === 'inflow' ? '+' : '-'}₹{Number(t.amount).toLocaleString()}
-                    </span>
-                    {isAdmin && (
-                      <>
-                        <Button variant="ghost" size="icon" onClick={() => startEdit(t)}><Pencil className="w-3 h-3" /></Button>
-                        <Button variant="ghost" size="icon" onClick={() => remove(t.id)}><Trash2 className="w-3 h-3 text-destructive" /></Button>
-                      </>
-                    )}
+            <div className="space-y-4">
+              {groupedByDate.map(([dateKey, items]) => (
+                <div key={dateKey}>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase mb-2">{dateKey}</p>
+                  <div className="space-y-2">
+                    {items.map((t: any) => (
+                      <div key={t.id} className="flex items-center justify-between text-sm border-b border-border pb-2 last:border-0">
+                        <div className="flex items-center gap-3">
+                          {t.type === 'inflow' ? <ArrowDownLeft className="w-4 h-4 text-[hsl(var(--success))]" /> : <ArrowUpRight className="w-4 h-4 text-destructive" />}
+                          <div>
+                            <p className="font-medium text-foreground">{t.description || (t.type === 'inflow' ? 'Money Added' : 'Expense')}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`font-bold ${t.type === 'inflow' ? 'text-[hsl(var(--success))]' : 'text-destructive'}`}>
+                            {t.type === 'inflow' ? '+' : '-'}₹{Number(t.amount).toLocaleString()}
+                          </span>
+                          {isAdmin && (
+                            <>
+                              <Button variant="ghost" size="icon" onClick={() => startEdit(t)}><Pencil className="w-3 h-3" /></Button>
+                              <Button variant="ghost" size="icon" onClick={() => remove(t.id)}><Trash2 className="w-3 h-3 text-destructive" /></Button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               ))}
