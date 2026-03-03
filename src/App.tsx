@@ -12,6 +12,7 @@ import ForgotPassword from "./pages/ForgotPassword";
 import Dashboard from "./pages/Dashboard";
 import RoomExpenses from "./pages/RoomExpenses";
 import PersonalExpenses from "./pages/PersonalExpenses";
+import PersonalWallet from "./pages/PersonalWallet";
 import Purse from "./pages/Purse";
 import AdminControlCenter from "./pages/AdminControlCenter";
 import Messages from "./pages/Messages";
@@ -60,6 +61,7 @@ const AppRoutes = () => (
       <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/room-expenses" element={<RoomExpenses />} />
       <Route path="/personal-expenses" element={<PersonalExpenses />} />
+      <Route path="/personal-wallet" element={<PersonalWallet />} />
       <Route path="/purse" element={<Purse />} />
       <Route path="/admin-control" element={<ProtectedRoute adminOnly><AdminControlCenter /></ProtectedRoute>} />
       <Route path="/messages" element={<Messages />} />

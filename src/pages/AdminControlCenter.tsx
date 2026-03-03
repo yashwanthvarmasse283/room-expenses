@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { Check, X, UserMinus, Shield, Save } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -31,16 +32,17 @@ const AdminControlCenter = () => {
   });
 
   const { data: adminProfile } = useQuery({
-    queryKey: ['admin_profile_budget', profile?.id],
+    queryKey: ['admin_profile_settings', profile?.id],
     queryFn: async () => {
       if (!profile) return null;
-      const { data } = await supabase.from('profiles').select('daily_food_budget').eq('id', profile.id).single();
+      const { data } = await supabase.from('profiles').select('daily_food_budget, admin_contributions_enabled').eq('id', profile.id).single();
       return data;
     },
     enabled: !!profile,
   });
 
   const currentBudget = (adminProfile as any)?.daily_food_budget ?? 120;
+  const adminContribEnabled = (adminProfile as any)?.admin_contributions_enabled ?? true;
 
   const updateUser = async (id: string, approved: boolean) => {
     const { error } = await supabase.from('profiles').update({ approved }).eq('id', id);
@@ -61,9 +63,17 @@ const AdminControlCenter = () => {
     if (!profile || isNaN(val) || val <= 0) return;
     const { error } = await supabase.from('profiles').update({ daily_food_budget: val } as any).eq('id', profile.id);
     if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
-    queryClient.invalidateQueries({ queryKey: ['admin_profile_budget'] });
+    queryClient.invalidateQueries({ queryKey: ['admin_profile_settings'] });
     toast({ title: 'Budget Updated', description: `Daily food budget set to ₹${val}` });
     setBudgetInput('');
+  };
+
+  const toggleAdminContrib = async (enabled: boolean) => {
+    if (!profile) return;
+    const { error } = await supabase.from('profiles').update({ admin_contributions_enabled: enabled } as any).eq('id', profile.id);
+    if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
+    queryClient.invalidateQueries({ queryKey: ['admin_profile_settings'] });
+    toast({ title: enabled ? 'Admin Contributions Enabled' : 'Admin Contributions Disabled' });
   };
 
   const pending = users.filter((u: any) => !u.approved);
@@ -102,6 +112,20 @@ const AdminControlCenter = () => {
             <Button size="sm" className="mt-5" onClick={saveBudget}>
               <Save className="w-3 h-3 mr-1" />Save
             </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Admin Contribution Toggle */}
+      <Card>
+        <CardHeader><CardTitle className="text-base">Admin Contributions</CardTitle></CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-foreground font-medium">Enable Admin Contributions</p>
+              <p className="text-xs text-muted-foreground">When disabled, the Admin cannot add contributions for themselves.</p>
+            </div>
+            <Switch checked={adminContribEnabled} onCheckedChange={toggleAdminContrib} />
           </div>
         </CardContent>
       </Card>
@@ -153,9 +177,7 @@ const AdminControlCenter = () => {
                       <AlertDialogContent>
                         <AlertDialogHeader>
                           <AlertDialogTitle>Remove {u.name}?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            This will remove the member from your room. They will lose access to all room data.
-                          </AlertDialogDescription>
+                          <AlertDialogDescription>This will remove the member from your room. They will lose access to all room data.</AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
                           <AlertDialogCancel>Cancel</AlertDialogCancel>

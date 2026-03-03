@@ -273,9 +273,43 @@ export type Database = {
         }
         Relationships: []
       }
+      personal_wallet: {
+        Row: {
+          amount: number
+          category: string
+          created_at: string
+          date: string
+          description: string | null
+          id: string
+          type: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          category?: string
+          created_at?: string
+          date?: string
+          description?: string | null
+          id?: string
+          type: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          category?: string
+          created_at?: string
+          date?: string
+          description?: string | null
+          id?: string
+          type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           admin_code: string | null
+          admin_contributions_enabled: boolean
           admin_id: string | null
           approved: boolean
           avatar_url: string | null
@@ -285,11 +319,13 @@ export type Database = {
           id: string
           mobile_number: string | null
           name: string
+          personal_daily_limit: number
           updated_at: string
           user_id: string
         }
         Insert: {
           admin_code?: string | null
+          admin_contributions_enabled?: boolean
           admin_id?: string | null
           approved?: boolean
           avatar_url?: string | null
@@ -299,11 +335,13 @@ export type Database = {
           id?: string
           mobile_number?: string | null
           name: string
+          personal_daily_limit?: number
           updated_at?: string
           user_id: string
         }
         Update: {
           admin_code?: string | null
+          admin_contributions_enabled?: boolean
           admin_id?: string | null
           approved?: boolean
           avatar_url?: string | null
@@ -313,6 +351,7 @@ export type Database = {
           id?: string
           mobile_number?: string | null
           name?: string
+          personal_daily_limit?: number
           updated_at?: string
           user_id?: string
         }
