@@ -15,6 +15,8 @@ export interface Profile {
   avatar_url: string | null;
   mobile_number: string | null;
   created_at: string;
+  deactivated?: boolean;
+  view_only?: boolean;
 }
 
 interface AuthContextType {
@@ -23,6 +25,7 @@ interface AuthContextType {
   profile: Profile | null;
   role: AppRole | null;
   loading: boolean;
+  isViewOnly: boolean;
   login: (email: string, password: string) => Promise<string | null>;
   signupAdmin: (name: string, email: string, password: string, mobileNumber: string) => Promise<string | null>;
   signupUser: (name: string, email: string, password: string, adminCode: string, mobileNumber: string) => Promise<string | null>;
@@ -48,6 +51,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .eq('user_id', userId)
       .maybeSingle();
     
+    // Check if deactivated - auto logout
+    if (profileData && (profileData as any).deactivated) {
+      await supabase.auth.signOut();
+      setProfile(null);
+      setRole(null);
+      return;
+    }
+
     setProfile(profileData as Profile | null);
 
     const { data: roleData } = await supabase
@@ -60,7 +71,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   useEffect(() => {
-    // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         setSession(session);
@@ -78,7 +88,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     );
 
-    // THEN check for existing session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
@@ -95,9 +104,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (user) await fetchProfile(user.id);
   }, [user]);
 
+  const isViewOnly = profile?.view_only ?? false;
+
   const login = useCallback(async (email: string, password: string): Promise<string | null> => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) return error.message;
+    
+    // Check deactivation after login
+    if (data.user) {
+      const { data: prof } = await supabase.from('profiles').select('deactivated').eq('user_id', data.user.id).maybeSingle();
+      if (prof && (prof as any).deactivated) {
+        await supabase.auth.signOut();
+        return 'Your account has been deactivated by the admin. Please contact your room admin.';
+      }
+    }
     return null;
   }, []);
 
@@ -122,7 +142,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .eq('user_id', data.user.id);
     if (profileError) return profileError.message;
 
-    // Assign admin role
     const { error: roleError } = await supabase
       .from('user_roles')
       .insert({ user_id: data.user.id, role: 'admin' });
@@ -159,13 +178,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .eq('user_id', data.user.id);
     if (profileError) return profileError.message;
 
-    // Assign user role
     const { error: roleError } = await supabase
       .from('user_roles')
       .insert({ user_id: data.user.id, role: 'user' });
     if (roleError) return roleError.message;
 
-    // Sign out since they need approval
     await supabase.auth.signOut();
     return null;
   }, []);
@@ -175,7 +192,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, session, profile, role, loading, login, signupAdmin, signupUser, logout, refreshProfile }}>
+    <AuthContext.Provider value={{ user, session, profile, role, loading, isViewOnly, login, signupAdmin, signupUser, logout, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );

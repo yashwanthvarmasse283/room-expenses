@@ -8,7 +8,7 @@ import { CheckCircle2, Clock, History, CalendarDays, CreditCard, Copy } from 'lu
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useMemo, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { triggerUpiPayment, getUpiVpa, getUpiQrValue } from '@/lib/upiHelper';
+import { getUpiVpa, getUpiQrValue, triggerUpiPayment } from '@/lib/upiHelper';
 import { QRCodeSVG } from 'qrcode.react';
 
 const TERM_LABELS: Record<number, string> = { 1: '1st – 10th', 2: '11th – 20th', 3: '21st – 30th' };
@@ -21,7 +21,7 @@ const getCurrentTerm = () => {
 };
 
 const Contributions = () => {
-  const { user, profile, role } = useAuth();
+  const { user, profile, role, isViewOnly } = useAuth();
   const { toast } = useToast();
   const qc = useQueryClient();
   const isAdmin = role === 'admin';
@@ -35,7 +35,6 @@ const Contributions = () => {
   const [pendingPayment, setPendingPayment] = useState<{ memberId: string; memberName: string; term: number } | null>(null);
   const [showFallback, setShowFallback] = useState(false);
 
-  // Check if admin contributions are enabled
   const { data: adminProfile } = useQuery({
     queryKey: ['admin_profile_contrib', adminId],
     queryFn: async () => {
@@ -109,7 +108,6 @@ const Contributions = () => {
   const handlePayNow = (memberId: string, memberName: string, term: number) => {
     triggerUpiPayment();
     setPendingPayment({ memberId, memberName, term });
-    // Show fallback after a delay
     setTimeout(() => setShowFallback(true), 3000);
   };
 
@@ -149,9 +147,6 @@ const Contributions = () => {
     toast({ title: 'VPA Copied', description: getUpiVpa() });
   };
 
-  // Determine if admin member should see the add button
-  const adminMember = members.find((m: any) => m.id === adminId);
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -161,9 +156,15 @@ const Contributions = () => {
             {isCurrentMonth ? `Current Term: ${TERM_LABELS[currentTerm]}` : `Viewing: ${monthOptions[month - 1].label} ${year}`}
           </p>
         </div>
-        <Button variant={showHistory ? 'default' : 'outline'} size="sm" onClick={() => setShowHistory(!showHistory)}>
-          <History className="w-4 h-4 mr-1" />{showHistory ? 'Current' : 'History'}
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* Copy UPI ID always visible */}
+          <Button variant="outline" size="sm" onClick={copyVpa}>
+            <Copy className="w-3 h-3 mr-1" />Copy UPI: {getUpiVpa()}
+          </Button>
+          <Button variant={showHistory ? 'default' : 'outline'} size="sm" onClick={() => setShowHistory(!showHistory)}>
+            <History className="w-4 h-4 mr-1" />{showHistory ? 'Current' : 'History'}
+          </Button>
+        </div>
       </div>
 
       {pendingPayment && (
@@ -228,9 +229,7 @@ const Contributions = () => {
                   const isPaid = record?.paid === true;
                   const isSelf = m.user_id === user?.id;
                   const isAdminMember = m.id === adminId;
-                  // Users can only edit/mark their own. Admins can edit all.
-                  const canMark = isAdmin || isSelf;
-                  // Hide admin's contribution button if disabled
+                  const canMark = (isAdmin || isSelf) && !isViewOnly;
                   const hideContribButton = isAdmin && isAdminMember && !adminContribEnabled;
 
                   return (
@@ -243,7 +242,7 @@ const Contributions = () => {
                         {isPaid ? (
                           <>
                             <Badge variant="secondary" className="text-xs bg-[hsl(var(--success))]/10 text-[hsl(var(--success))]">Paid</Badge>
-                            {isAdmin && (
+                            {isAdmin && !isViewOnly && (
                               <Button size="sm" variant="ghost" className="text-xs h-7" onClick={() => markUnpaid.mutate({ memberId: m.user_id, term })}>Undo</Button>
                             )}
                           </>

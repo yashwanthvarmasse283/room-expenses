@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
+import { Progress } from '@/components/ui/progress';
 import { Plus, ArrowDownLeft, ArrowUpRight, Wallet, Pencil, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -25,7 +26,7 @@ const TERM_LABELS: Record<number, string> = { 1: 'Term 1 (1-10)', 2: 'Term 2 (11
 const getTermForDay = (day: number) => (day <= 10 ? 1 : day <= 20 ? 2 : 3);
 
 const PersonalWallet = () => {
-  const { user, profile } = useAuth();
+  const { user, profile, isViewOnly } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -79,6 +80,7 @@ const PersonalWallet = () => {
     .filter((t: any) => t.type === 'expense' && t.date === today)
     .reduce((s: number, t: any) => s + Number(t.amount), 0);
   const overLimit = dailyLimit > 0 && todaySpent > dailyLimit;
+  const limitPercent = dailyLimit > 0 ? Math.min(100, Math.round((todaySpent / dailyLimit) * 100)) : 0;
 
   // 3-Term Analysis
   const termData = useMemo(() => {
@@ -176,36 +178,57 @@ const PersonalWallet = () => {
             {dailyLimit > 0 && <span className="text-muted-foreground"> / ₹{dailyLimit}</span>}
           </p>
         </div>
-        <div className="flex gap-2">
-          <Dialog open={open} onOpenChange={o => { setOpen(o); if (!o) resetForm(); }}>
-            <DialogTrigger asChild>
-              <Button onClick={() => setTxType('income')} variant="outline"><ArrowDownLeft className="w-4 h-4 mr-1" />Add Income</Button>
-            </DialogTrigger>
-            <DialogTrigger asChild>
-              <Button onClick={() => setTxType('expense')}><ArrowUpRight className="w-4 h-4 mr-1" />Add Expense</Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader><DialogTitle>{editingId ? 'Edit' : txType === 'income' ? 'Add Income' : 'Add Expense'}</DialogTitle></DialogHeader>
-              <form onSubmit={save} className="space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-2"><Label>Date</Label><Input type="date" value={date} onChange={e => setDate(e.target.value)} required /></div>
-                  {txType === 'expense' && (
-                    <div className="space-y-2"><Label>Category</Label>
-                      <Select value={category} onValueChange={setCategory}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>{expenseCategories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-                      </Select>
-                    </div>
-                  )}
-                </div>
-                <div className="space-y-2"><Label>Amount (₹)</Label><Input type="number" value={amount} onChange={e => setAmount(e.target.value)} required /></div>
-                <div className="space-y-2"><Label>Description</Label><Textarea value={description} onChange={e => setDescription(e.target.value)} /></div>
-                <Button className="w-full" type="submit">{editingId ? 'Update' : 'Save'}</Button>
-              </form>
-            </DialogContent>
-          </Dialog>
-        </div>
+        {!isViewOnly && (
+          <div className="flex gap-2">
+            <Dialog open={open} onOpenChange={o => { setOpen(o); if (!o) resetForm(); }}>
+              <DialogTrigger asChild>
+                <Button onClick={() => setTxType('income')} variant="outline"><ArrowDownLeft className="w-4 h-4 mr-1" />Add Income</Button>
+              </DialogTrigger>
+              <DialogTrigger asChild>
+                <Button onClick={() => setTxType('expense')}><ArrowUpRight className="w-4 h-4 mr-1" />Add Expense</Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader><DialogTitle>{editingId ? 'Edit' : txType === 'income' ? 'Add Income' : 'Add Expense'}</DialogTitle></DialogHeader>
+                <form onSubmit={save} className="space-y-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2"><Label>Date</Label><Input type="date" value={date} onChange={e => setDate(e.target.value)} required /></div>
+                    {txType === 'expense' && (
+                      <div className="space-y-2"><Label>Category</Label>
+                        <Select value={category} onValueChange={setCategory}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>{expenseCategories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                  </div>
+                  <div className="space-y-2"><Label>Amount (₹)</Label><Input type="number" value={amount} onChange={e => setAmount(e.target.value)} required /></div>
+                  <div className="space-y-2"><Label>Description</Label><Textarea value={description} onChange={e => setDescription(e.target.value)} /></div>
+                  <Button className="w-full" type="submit">{editingId ? 'Update' : 'Save'}</Button>
+                </form>
+              </DialogContent>
+            </Dialog>
+          </div>
+        )}
       </div>
+
+      {/* Daily Limit Progress Bar */}
+      {dailyLimit > 0 && (
+        <Card>
+          <CardContent className="pt-4 space-y-2">
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">Daily Budget</span>
+              <span className={`font-bold ${overLimit ? 'text-destructive' : 'text-[hsl(var(--success))]'}`}>
+                ₹{todaySpent.toLocaleString()} / ₹{dailyLimit.toLocaleString()}
+              </span>
+            </div>
+            <Progress
+              value={limitPercent}
+              className={overLimit ? '[&>div]:bg-destructive' : '[&>div]:bg-[hsl(var(--success))]'}
+            />
+            {overLimit && <p className="text-xs text-destructive font-medium">⚠️ Daily limit exceeded!</p>}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Summary cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -292,8 +315,12 @@ const PersonalWallet = () => {
                           <span className={`font-bold ${t.type === 'income' ? 'text-[hsl(var(--success))]' : 'text-destructive'}`}>
                             {t.type === 'income' ? '+' : '-'}₹{Number(t.amount).toLocaleString()}
                           </span>
-                          <Button variant="ghost" size="icon" onClick={() => startEdit(t)}><Pencil className="w-3 h-3" /></Button>
-                          <Button variant="ghost" size="icon" onClick={() => remove(t.id)}><Trash2 className="w-3 h-3 text-destructive" /></Button>
+                          {!isViewOnly && (
+                            <>
+                              <Button variant="ghost" size="icon" onClick={() => startEdit(t)}><Pencil className="w-3 h-3" /></Button>
+                              <Button variant="ghost" size="icon" onClick={() => remove(t.id)}><Trash2 className="w-3 h-3 text-destructive" /></Button>
+                            </>
+                          )}
                         </div>
                       </div>
                     ))}
