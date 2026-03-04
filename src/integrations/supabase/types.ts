@@ -315,6 +315,7 @@ export type Database = {
           avatar_url: string | null
           created_at: string
           daily_food_budget: number
+          deactivated: boolean
           email: string
           id: string
           mobile_number: string | null
@@ -322,6 +323,7 @@ export type Database = {
           personal_daily_limit: number
           updated_at: string
           user_id: string
+          view_only: boolean
         }
         Insert: {
           admin_code?: string | null
@@ -331,6 +333,7 @@ export type Database = {
           avatar_url?: string | null
           created_at?: string
           daily_food_budget?: number
+          deactivated?: boolean
           email: string
           id?: string
           mobile_number?: string | null
@@ -338,6 +341,7 @@ export type Database = {
           personal_daily_limit?: number
           updated_at?: string
           user_id: string
+          view_only?: boolean
         }
         Update: {
           admin_code?: string | null
@@ -347,6 +351,7 @@ export type Database = {
           avatar_url?: string | null
           created_at?: string
           daily_food_budget?: number
+          deactivated?: boolean
           email?: string
           id?: string
           mobile_number?: string | null
@@ -354,6 +359,7 @@ export type Database = {
           personal_daily_limit?: number
           updated_at?: string
           user_id?: string
+          view_only?: boolean
         }
         Relationships: [
           {

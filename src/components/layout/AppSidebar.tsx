@@ -6,7 +6,7 @@ import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/s
 import {
   LayoutDashboard, Receipt, PiggyBank, MessageSquare, BarChart3,
   Settings, LogOut, Menu, Sun, Moon, Wallet, MessagesSquare, Megaphone, UserCog,
-  CalendarCheck, CalendarClock, ShieldCheck, CreditCard
+  CalendarCheck, CalendarClock, ShieldCheck, CreditCard, Lightbulb
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -16,6 +16,7 @@ const adminLinks = [
   { to: '/purse', label: 'Room Fund', icon: Wallet },
   { to: '/contributions', label: 'Contributions', icon: CalendarCheck },
   { to: '/recurring-bills', label: 'Recurring Bills', icon: CalendarClock },
+  { to: '/room-insights', label: 'Room Insights', icon: Lightbulb },
   { to: '/admin-control', label: 'Admin Control', icon: ShieldCheck },
   { to: '/room-chat', label: 'Room Chat', icon: MessagesSquare },
   { to: '/notice-board', label: 'Notice Board', icon: Megaphone },
@@ -33,6 +34,7 @@ const userLinks = [
   { to: '/purse', label: 'Room Fund', icon: Wallet },
   { to: '/contributions', label: 'Contributions', icon: CalendarCheck },
   { to: '/recurring-bills', label: 'Recurring Bills', icon: CalendarClock },
+  { to: '/room-insights', label: 'Room Insights', icon: Lightbulb },
   { to: '/room-chat', label: 'Room Chat', icon: MessagesSquare },
   { to: '/notice-board', label: 'Notice Board', icon: Megaphone },
   { to: '/messages', label: 'Messages', icon: MessageSquare },
@@ -53,7 +55,7 @@ export const AppSidebar = () => {
     <div className="flex flex-col h-full">
       <div className="p-5 border-b border-sidebar-border">
         <h2 className="text-lg font-bold tracking-tight text-sidebar-foreground font-['Space_Grotesk']">
-          RoomExpense
+          View-Expenses
         </h2>
         <p className="text-xs text-muted-foreground mt-0.5 capitalize">{role} · {profile?.name}</p>
       </div>
@@ -90,7 +92,7 @@ export const AppSidebar = () => {
         <NavContent />
       </aside>
       <div className="lg:hidden fixed top-0 left-0 right-0 z-40 bg-sidebar border-b border-sidebar-border px-4 py-3 flex items-center justify-between">
-        <h2 className="text-base font-bold text-sidebar-foreground font-['Space_Grotesk']">RoomExpense</h2>
+        <h2 className="text-base font-bold text-sidebar-foreground font-['Space_Grotesk']">View-Expenses</h2>
         <Sheet open={open} onOpenChange={setOpen}>
           <SheetTrigger asChild>
             <Button variant="ghost" size="icon"><Menu className="w-5 h-5" /></Button>

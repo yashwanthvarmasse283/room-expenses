@@ -7,13 +7,14 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { Check, X, UserMinus, Shield, Save } from 'lucide-react';
+import { Check, X, UserMinus, Shield, Save, Ban, Eye } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 const AdminControlCenter = () => {
   const { profile } = useAuth();
@@ -76,6 +77,20 @@ const AdminControlCenter = () => {
     toast({ title: enabled ? 'Admin Contributions Enabled' : 'Admin Contributions Disabled' });
   };
 
+  const toggleDeactivated = async (member: any, deactivated: boolean) => {
+    const { error } = await supabase.from('profiles').update({ deactivated } as any).eq('id', member.id);
+    if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
+    queryClient.invalidateQueries({ queryKey: ['admin_users'] });
+    toast({ title: deactivated ? 'User Deactivated' : 'User Activated', description: `${member.name} has been ${deactivated ? 'deactivated' : 'activated'}.` });
+  };
+
+  const toggleViewOnly = async (member: any, viewOnly: boolean) => {
+    const { error } = await supabase.from('profiles').update({ view_only: viewOnly } as any).eq('id', member.id);
+    if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
+    queryClient.invalidateQueries({ queryKey: ['admin_users'] });
+    toast({ title: viewOnly ? 'View-Only Enabled' : 'View-Only Disabled', description: `${member.name} is now in ${viewOnly ? 'view-only' : 'full access'} mode.` });
+  };
+
   const pending = users.filter((u: any) => !u.approved);
   const approved = users.filter((u: any) => u.approved);
 
@@ -103,7 +118,7 @@ const AdminControlCenter = () => {
       <Card>
         <CardHeader><CardTitle className="text-base">Daily Food Budget Limit</CardTitle></CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground mb-3">Current limit: <span className="font-bold text-foreground">₹{currentBudget}</span>. Food expenses exceeding this per day will be highlighted in red on Room Expenses.</p>
+          <p className="text-sm text-muted-foreground mb-3">Current limit: <span className="font-bold text-foreground">₹{currentBudget}</span>.</p>
           <div className="flex items-center gap-3">
             <div className="space-y-1">
               <Label className="text-xs">New Limit (₹)</Label>
@@ -165,9 +180,37 @@ const AdminControlCenter = () => {
                     <p className="font-medium text-foreground">{u.name}</p>
                     <p className="text-xs text-muted-foreground">{u.email}</p>
                     {u.mobile_number && <p className="text-xs text-muted-foreground">{u.mobile_number}</p>}
+                    <div className="flex gap-1 mt-1">
+                      {(u as any).deactivated && <Badge variant="destructive" className="text-[10px]">Deactivated</Badge>}
+                      {(u as any).view_only && <Badge variant="outline" className="text-[10px]">View-Only</Badge>}
+                    </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Badge variant="secondary">Active</Badge>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant={!(u as any).deactivated ? "ghost" : "default"}
+                          size="icon"
+                          className={!(u as any).deactivated ? "text-destructive hover:bg-destructive/10" : ""}
+                          onClick={() => toggleDeactivated(u, !(u as any).deactivated)}
+                        >
+                          <Ban className="w-4 h-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>{(u as any).deactivated ? 'Activate' : 'Deactivate'}</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant={!(u as any).view_only ? "ghost" : "default"}
+                          size="icon"
+                          onClick={() => toggleViewOnly(u, !(u as any).view_only)}
+                        >
+                          <Eye className="w-4 h-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>{(u as any).view_only ? 'Grant Full Access' : 'Set View-Only'}</TooltipContent>
+                    </Tooltip>
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
                         <Button variant="ghost" size="icon" className="text-destructive hover:bg-destructive/10">

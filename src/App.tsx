@@ -19,6 +19,7 @@ import Messages from "./pages/Messages";
 import RoomChat from "./pages/RoomChat";
 import NoticeBoard from "./pages/NoticeBoard";
 import Analytics from "./pages/Analytics";
+import RoomInsights from "./pages/RoomInsights";
 import SettingsPage from "./pages/SettingsPage";
 import ProfileSettings from "./pages/ProfileSettings";
 import NotFound from "./pages/NotFound";
@@ -70,6 +71,7 @@ const AppRoutes = () => (
       <Route path="/contributions" element={<Contributions />} />
       <Route path="/recurring-bills" element={<RecurringBills />} />
       <Route path="/analytics" element={<Analytics />} />
+      <Route path="/room-insights" element={<RoomInsights />} />
       <Route path="/settings" element={<SettingsPage />} />
       <Route path="/profile-settings" element={<ProfileSettings />} />
     </Route>
