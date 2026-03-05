@@ -1,13 +1,12 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CalendarClock, Plus, Trash2, Pencil } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
@@ -16,11 +15,12 @@ import { useToast } from '@/hooks/use-toast';
 const CATEGORIES = ['Rent', 'WiFi', 'Electricity', 'Netflix', 'Gas', 'Water', 'Insurance', 'Other'];
 
 const RecurringBills = () => {
-  const { profile, role } = useAuth();
+  const { profile, role, isViewOnly } = useAuth();
   const { toast } = useToast();
   const qc = useQueryClient();
   const adminId = role === 'admin' ? profile?.id : profile?.admin_id;
   const isAdmin = role === 'admin';
+  const canEdit = isAdmin && !isViewOnly;
 
   const [open, setOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -76,10 +76,7 @@ const RecurringBills = () => {
       const { error } = await supabase.from('recurring_bills').delete().eq('id', id);
       if (error) throw error;
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['recurring_bills'] });
-      toast({ title: 'Bill removed' });
-    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['recurring_bills'] }); toast({ title: 'Bill removed' }); },
   });
 
   const toggleActive = useMutation({
@@ -91,12 +88,9 @@ const RecurringBills = () => {
   });
 
   const openEdit = (bill: any) => {
-    setEditId(bill.id);
-    setName(bill.name);
-    setAmount(String(bill.amount));
-    setDueDay(String(bill.due_day));
-    setCategory(bill.category);
-    setOpen(true);
+    if (!canEdit) return;
+    setEditId(bill.id); setName(bill.name); setAmount(String(bill.amount));
+    setDueDay(String(bill.due_day)); setCategory(bill.category); setOpen(true);
   };
 
   const today = new Date().getDate();
@@ -108,7 +102,7 @@ const RecurringBills = () => {
           <h1 className="text-2xl font-bold text-foreground">Recurring Bills</h1>
           <p className="text-sm text-muted-foreground">Fixed monthly expenses auto-tracked</p>
         </div>
-        {isAdmin && (
+        {canEdit && (
           <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) resetForm(); }}>
             <DialogTrigger asChild>
               <Button size="sm"><Plus className="w-4 h-4 mr-1" />Add Bill</Button>
@@ -118,7 +112,7 @@ const RecurringBills = () => {
               <div className="space-y-4">
                 <div><Label>Name</Label><Input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Netflix" /></div>
                 <div><Label>Amount (₹)</Label><Input type="number" value={amount} onChange={e => setAmount(e.target.value)} /></div>
-                <div><Label>Due Day of Month</Label>
+                <div><Label>Due Day</Label>
                   <Select value={dueDay} onValueChange={setDueDay}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>{Array.from({ length: 31 }, (_, i) => <SelectItem key={i + 1} value={String(i + 1)}>{i + 1}</SelectItem>)}</SelectContent>
@@ -130,9 +124,7 @@ const RecurringBills = () => {
                     <SelectContent>{CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
-                <Button className="w-full" onClick={() => saveBill.mutate()} disabled={!name || !amount}>
-                  {editId ? 'Update' : 'Add Bill'}
-                </Button>
+                <Button className="w-full" onClick={() => saveBill.mutate()} disabled={!name || !amount}>{editId ? 'Update' : 'Add Bill'}</Button>
               </div>
             </DialogContent>
           </Dialog>
@@ -153,7 +145,7 @@ const RecurringBills = () => {
               </div>
               <div className="flex items-center gap-3">
                 <span className="font-semibold text-foreground">₹{Number(bill.amount).toLocaleString()}</span>
-                {isAdmin && (
+                {canEdit && (
                   <>
                     <Switch checked={bill.active} onCheckedChange={(v) => toggleActive.mutate({ id: bill.id, active: v })} />
                     <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(bill)}><Pencil className="w-3.5 h-3.5" /></Button>

@@ -4,16 +4,16 @@ import { NavLink } from '@/components/NavLink';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/sheet';
 import {
-  LayoutDashboard, Receipt, PiggyBank, MessageSquare, BarChart3,
-  Settings, LogOut, Menu, Sun, Moon, Wallet, MessagesSquare, Megaphone, UserCog,
-  CalendarCheck, CalendarClock, ShieldCheck, CreditCard, Lightbulb
+  LayoutDashboard, Receipt, Wallet, MessagesSquare, Megaphone,
+  Settings, LogOut, Menu, Sun, Moon, ShieldCheck, CalendarCheck,
+  CalendarClock, Lightbulb, CreditCard, MessageSquare
 } from 'lucide-react';
 import { useState } from 'react';
 
 const adminLinks = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/room-expenses', label: 'Room Expenses', icon: Receipt },
-  { to: '/purse', label: 'Room Fund', icon: Wallet },
+  { to: '/room-expenses', label: 'Expenses', icon: Receipt },
+  { to: '/purse', label: 'Room Funds', icon: Wallet },
   { to: '/contributions', label: 'Contributions', icon: CalendarCheck },
   { to: '/recurring-bills', label: 'Recurring Bills', icon: CalendarClock },
   { to: '/room-insights', label: 'Room Insights', icon: Lightbulb },
@@ -22,16 +22,13 @@ const adminLinks = [
   { to: '/notice-board', label: 'Notice Board', icon: Megaphone },
   { to: '/messages', label: 'Messages', icon: MessageSquare },
   { to: '/personal-wallet', label: 'Personal Wallet', icon: CreditCard },
-  { to: '/personal-expenses', label: 'Personal Expenses', icon: PiggyBank },
-  { to: '/analytics', label: 'Analytics', icon: BarChart3 },
-  { to: '/profile-settings', label: 'Profile', icon: UserCog },
-  { to: '/settings', label: 'Settings', icon: Settings },
+  { to: '/account-settings', label: 'Account Settings', icon: Settings },
 ];
 
 const userLinks = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/room-expenses', label: 'Room Expenses', icon: Receipt },
-  { to: '/purse', label: 'Room Fund', icon: Wallet },
+  { to: '/room-expenses', label: 'Expenses', icon: Receipt },
+  { to: '/purse', label: 'Room Funds', icon: Wallet },
   { to: '/contributions', label: 'Contributions', icon: CalendarCheck },
   { to: '/recurring-bills', label: 'Recurring Bills', icon: CalendarClock },
   { to: '/room-insights', label: 'Room Insights', icon: Lightbulb },
@@ -39,10 +36,7 @@ const userLinks = [
   { to: '/notice-board', label: 'Notice Board', icon: Megaphone },
   { to: '/messages', label: 'Messages', icon: MessageSquare },
   { to: '/personal-wallet', label: 'Personal Wallet', icon: CreditCard },
-  { to: '/personal-expenses', label: 'Personal Expenses', icon: PiggyBank },
-  { to: '/analytics', label: 'Analytics', icon: BarChart3 },
-  { to: '/profile-settings', label: 'Profile', icon: UserCog },
-  { to: '/settings', label: 'Settings', icon: Settings },
+  { to: '/account-settings', label: 'Account Settings', icon: Settings },
 ];
 
 export const AppSidebar = () => {

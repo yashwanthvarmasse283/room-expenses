@@ -74,7 +74,6 @@ const PersonalWallet = () => {
   const totalIncome = transactions.filter((t: any) => t.type === 'income').reduce((s: number, t: any) => s + Number(t.amount), 0);
   const totalSpent = transactions.filter((t: any) => t.type === 'expense').reduce((s: number, t: any) => s + Number(t.amount), 0);
 
-  // Today's spending
   const today = new Date().toISOString().slice(0, 10);
   const todaySpent = transactions
     .filter((t: any) => t.type === 'expense' && t.date === today)
@@ -82,7 +81,6 @@ const PersonalWallet = () => {
   const overLimit = dailyLimit > 0 && todaySpent > dailyLimit;
   const limitPercent = dailyLimit > 0 ? Math.min(100, Math.round((todaySpent / dailyLimit) * 100)) : 0;
 
-  // 3-Term Analysis
   const termData = useMemo(() => {
     const now = new Date();
     const currentMonth = now.getMonth();
@@ -95,9 +93,7 @@ const PersonalWallet = () => {
     });
 
     const termTotals: Record<number, { total: number; categories: Record<string, number> }> = {
-      1: { total: 0, categories: {} },
-      2: { total: 0, categories: {} },
-      3: { total: 0, categories: {} },
+      1: { total: 0, categories: {} }, 2: { total: 0, categories: {} }, 3: { total: 0, categories: {} },
     };
 
     thisMonth.forEach((t: any) => {
@@ -121,7 +117,6 @@ const PersonalWallet = () => {
     return Array.from(cats);
   }, [transactions]);
 
-  // Group by date
   const groupedByDate = useMemo(() => {
     const groups: Record<string, any[]> = {};
     transactions.forEach((t: any) => {
@@ -135,7 +130,7 @@ const PersonalWallet = () => {
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!user || isViewOnly) return;
 
     if (editingId) {
       const { error } = await supabase.from('personal_wallet')
@@ -155,12 +150,14 @@ const PersonalWallet = () => {
   };
 
   const remove = async (id: string) => {
+    if (isViewOnly) return;
     await supabase.from('personal_wallet').delete().eq('id', id);
     queryClient.invalidateQueries({ queryKey: ['personal_wallet'] });
     toast({ title: 'Deleted' });
   };
 
   const startEdit = (t: any) => {
+    if (isViewOnly) return;
     setEditingId(t.id); setAmount(String(t.amount)); setDate(t.date);
     setDescription(t.description || ''); setTxType(t.type); setCategory(t.category);
     setOpen(true);
@@ -211,7 +208,6 @@ const PersonalWallet = () => {
         )}
       </div>
 
-      {/* Daily Limit Progress Bar */}
       {dailyLimit > 0 && (
         <Card>
           <CardContent className="pt-4 space-y-2">
@@ -230,7 +226,6 @@ const PersonalWallet = () => {
         </Card>
       )}
 
-      {/* Summary cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -255,7 +250,6 @@ const PersonalWallet = () => {
         </Card>
       </div>
 
-      {/* 3-Term Analysis */}
       <Card>
         <CardHeader><CardTitle className="text-base">Term-Wise Spending (This Month)</CardTitle></CardHeader>
         <CardContent>
@@ -290,7 +284,6 @@ const PersonalWallet = () => {
         </CardContent>
       </Card>
 
-      {/* Transaction History grouped by date */}
       <Card>
         <CardHeader><CardTitle className="text-base">Transaction History</CardTitle></CardHeader>
         <CardContent>

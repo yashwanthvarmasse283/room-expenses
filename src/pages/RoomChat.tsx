@@ -9,7 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 const RoomChat = () => {
-  const { user, profile, role } = useAuth();
+  const { user, profile, role, isViewOnly } = useAuth();
   const isAdmin = role === 'admin';
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -45,7 +45,7 @@ const RoomChat = () => {
 
   const send = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!message.trim() || !user || !profile || !adminId) return;
+    if (!message.trim() || !user || !profile || !adminId || isViewOnly) return;
     const { error } = await supabase.from('chat_messages').insert({
       admin_id: adminId, sender_id: user.id, sender_name: profile.name, content: message.trim(),
     });
@@ -54,6 +54,7 @@ const RoomChat = () => {
   };
 
   const deleteMessage = async (msgId: string) => {
+    if (isViewOnly) return;
     const { error } = await supabase.from('chat_messages').delete().eq('id', msgId);
     if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
     queryClient.invalidateQueries({ queryKey: ['chat_messages', adminId] });
@@ -71,7 +72,7 @@ const RoomChat = () => {
             <p className="text-sm text-muted-foreground text-center py-8">No messages yet. Start the conversation!</p>
           ) : messages.map((m: any) => {
             const isMe = m.sender_id === user?.id;
-            const canDelete = isAdmin || isMe;
+            const canDelete = (isAdmin || isMe) && !isViewOnly;
             return (
               <div key={m.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'} group`}>
                 <div className={`max-w-[75%] rounded-2xl px-4 py-2 relative ${isMe ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground'}`}>
@@ -96,12 +97,14 @@ const RoomChat = () => {
           })}
           <div ref={bottomRef} />
         </CardContent>
-        <div className="p-4 border-t border-border">
-          <form onSubmit={send} className="flex gap-2">
-            <Input placeholder="Type a message..." value={message} onChange={e => setMessage(e.target.value)} className="flex-1" />
-            <Button type="submit" size="icon" disabled={!message.trim()}><Send className="w-4 h-4" /></Button>
-          </form>
-        </div>
+        {!isViewOnly && (
+          <div className="p-4 border-t border-border">
+            <form onSubmit={send} className="flex gap-2">
+              <Input placeholder="Type a message..." value={message} onChange={e => setMessage(e.target.value)} className="flex-1" />
+              <Button type="submit" size="icon" disabled={!message.trim()}><Send className="w-4 h-4" /></Button>
+            </form>
+          </div>
+        )}
       </Card>
     </div>
   );
