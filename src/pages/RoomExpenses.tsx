@@ -15,7 +15,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 const categories = ['Food', 'Water', 'Rent', 'Electricity', 'Internet', 'Misc'] as const;
 
 const RoomExpenses = () => {
-  const { user, role, profile } = useAuth();
+  const { user, role, profile, isViewOnly } = useAuth();
   const isAdmin = role === 'admin';
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -54,7 +54,6 @@ const RoomExpenses = () => {
 
   const dailyFoodBudget = (budgetData as any)?.daily_food_budget ?? 120;
 
-  // Case-insensitive food totals including 'Water'
   const dailyFoodTotals = useMemo(() => {
     const map: Record<string, number> = {};
     expenses.forEach((e: any) => {
@@ -80,7 +79,15 @@ const RoomExpenses = () => {
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!profile) return;
+    if (!profile || isViewOnly) return;
+
+    // Check daily spending limit warning
+    if (!editingId && dailyFoodBudget > 0 && category.toLowerCase() === 'food') {
+      const existingTotal = dailyFoodTotals[date] || 0;
+      if (existingTotal + Number(amount) > dailyFoodBudget) {
+        toast({ title: '⚠️ Daily spending limit exceeded.', description: `Food budget for ${date}: ₹${dailyFoodBudget}`, variant: 'destructive' });
+      }
+    }
 
     if (editingId) {
       const { error } = await supabase.from('room_expenses')
@@ -104,6 +111,7 @@ const RoomExpenses = () => {
   };
 
   const remove = async (id: string) => {
+    if (isViewOnly) return;
     const { error } = await supabase.from('room_expenses').delete().eq('id', id);
     if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
     queryClient.invalidateQueries({ queryKey: ['room_expenses'] });
@@ -111,6 +119,7 @@ const RoomExpenses = () => {
   };
 
   const startEdit = (exp: any) => {
+    if (isViewOnly) return;
     setEditingId(exp.id); setDate(exp.date); setCategory(exp.category);
     setAmount(String(exp.amount)); setDescription(exp.description || ''); setPaidBy(exp.paid_by || '');
     setOpen(true);
@@ -142,6 +151,8 @@ const RoomExpenses = () => {
     return foodTotal > dailyFoodBudget ? 'border-l-4 border-l-destructive bg-destructive/5' : 'border-l-4 border-l-[hsl(var(--success))] bg-[hsl(var(--success))]/5';
   };
 
+  const canEdit = isAdmin && !isViewOnly;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -149,31 +160,33 @@ const RoomExpenses = () => {
           <h1 className="text-2xl font-bold text-foreground">Room Expenses</h1>
           <p className="text-sm text-muted-foreground">Monthly total: ₹{monthlyTotal.toLocaleString()} · Food budget: ₹{dailyFoodBudget}/day</p>
         </div>
-        <Dialog open={open} onOpenChange={o => { setOpen(o); if (!o) resetForm(); }}>
-          <DialogTrigger asChild>
-            <Button><Plus className="w-4 h-4 mr-1" />Add Expense</Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader><DialogTitle>{editingId ? 'Edit' : 'Add'} Expense</DialogTitle></DialogHeader>
-            <form onSubmit={save} className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2"><Label>Date</Label><Input type="date" value={date} onChange={e => setDate(e.target.value)} required /></div>
-                <div className="space-y-2"><Label>Category</Label>
-                  <Select value={category} onValueChange={setCategory}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>{categories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-                  </Select>
+        {!isViewOnly && (
+          <Dialog open={open} onOpenChange={o => { setOpen(o); if (!o) resetForm(); }}>
+            <DialogTrigger asChild>
+              <Button><Plus className="w-4 h-4 mr-1" />Add Expense</Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader><DialogTitle>{editingId ? 'Edit' : 'Add'} Expense</DialogTitle></DialogHeader>
+              <form onSubmit={save} className="space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2"><Label>Date</Label><Input type="date" value={date} onChange={e => setDate(e.target.value)} required /></div>
+                  <div className="space-y-2"><Label>Category</Label>
+                    <Select value={category} onValueChange={setCategory}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>{categories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
                 </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2"><Label>Amount (₹)</Label><Input type="number" value={amount} onChange={e => setAmount(e.target.value)} required /></div>
-                <div className="space-y-2"><Label>Paid By</Label><Input value={paidBy} onChange={e => setPaidBy(e.target.value)} /></div>
-              </div>
-              <div className="space-y-2"><Label>Description</Label><Textarea value={description} onChange={e => setDescription(e.target.value)} /></div>
-              <Button className="w-full" type="submit">{editingId ? 'Update' : 'Add'} Expense</Button>
-            </form>
-          </DialogContent>
-        </Dialog>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2"><Label>Amount (₹)</Label><Input type="number" value={amount} onChange={e => setAmount(e.target.value)} required /></div>
+                  <div className="space-y-2"><Label>Paid By</Label><Input value={paidBy} onChange={e => setPaidBy(e.target.value)} /></div>
+                </div>
+                <div className="space-y-2"><Label>Description</Label><Textarea value={description} onChange={e => setDescription(e.target.value)} /></div>
+                <Button className="w-full" type="submit">{editingId ? 'Update' : 'Add'} Expense</Button>
+              </form>
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
 
       <div className="flex gap-3 flex-wrap">
@@ -216,7 +229,7 @@ const RoomExpenses = () => {
                     </div>
                     <div className="flex items-center gap-3">
                       <span className="font-bold text-foreground">₹{Number(e.amount).toLocaleString()}</span>
-                      {isAdmin && (
+                      {canEdit && (
                         <div className="flex gap-1">
                           <Button variant="ghost" size="icon" onClick={() => startEdit(e)}><Pencil className="w-4 h-4" /></Button>
                           <Button variant="ghost" size="icon" onClick={() => remove(e.id)}><Trash2 className="w-4 h-4 text-destructive" /></Button>

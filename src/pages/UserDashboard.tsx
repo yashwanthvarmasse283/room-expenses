@@ -1,7 +1,7 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Receipt, PiggyBank, TrendingUp, Wallet, Megaphone } from 'lucide-react';
+import { Receipt, TrendingUp, Wallet, Megaphone } from 'lucide-react';
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -27,16 +27,6 @@ const UserDashboard = () => {
     enabled: !!profile?.admin_id,
   });
 
-  const { data: personal = [] } = useQuery({
-    queryKey: ['personal_expenses', user?.id],
-    queryFn: async () => {
-      if (!user) return [];
-      const { data } = await supabase.from('personal_expenses').select('*').eq('user_id', user.id).order('created_at', { ascending: false });
-      return data ?? [];
-    },
-    enabled: !!user,
-  });
-
   const { data: purse = [] } = useQuery({
     queryKey: ['purse_transactions_user', profile?.admin_id],
     queryFn: async () => {
@@ -58,7 +48,6 @@ const UserDashboard = () => {
   });
 
   const totalRoom = useMemo(() => roomExpenses.reduce((s: number, e: any) => s + Number(e.amount), 0), [roomExpenses]);
-  const totalPersonal = useMemo(() => personal.reduce((s: number, e: any) => s + Number(e.amount), 0), [personal]);
 
   const now = new Date();
   const thisMonthRoom = roomExpenses.filter((e: any) => {
@@ -78,14 +67,12 @@ const UserDashboard = () => {
     [purse]
   );
 
-  // Category breakdown for this month
   const categoryData = useMemo(() => {
     const map: Record<string, number> = {};
     thisMonthRoom.forEach((e: any) => { map[e.category] = (map[e.category] || 0) + Number(e.amount); });
     return Object.entries(map).map(([name, value]) => ({ name, value }));
   }, [thisMonthRoom]);
 
-  // Monthly comparison
   const comparisonData = useMemo(() => {
     const thisLabel = now.toLocaleString('default', { month: 'short' });
     const lastLabel = new Date(now.getFullYear(), now.getMonth() - 1).toLocaleString('default', { month: 'short' });
@@ -97,7 +84,6 @@ const UserDashboard = () => {
 
   const stats = [
     { label: 'Room Expenses', value: `₹${totalRoom.toLocaleString()}`, icon: Receipt, color: 'text-primary' },
-    { label: 'Personal Total', value: `₹${totalPersonal.toLocaleString()}`, icon: PiggyBank, color: 'text-[hsl(var(--success))]' },
     { label: 'This Month', value: `₹${thisTotal.toLocaleString()}`, icon: TrendingUp, color: 'text-[hsl(var(--warning))]' },
     { label: 'Purse Balance', value: `₹${purseBalance.toLocaleString()}`, icon: Wallet, color: 'text-[hsl(var(--success))]' },
   ];
@@ -109,7 +95,7 @@ const UserDashboard = () => {
         <p className="text-sm text-muted-foreground">Your expense overview</p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {stats.map(s => (
           <Card key={s.label}>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -123,7 +109,6 @@ const UserDashboard = () => {
         ))}
       </div>
 
-      {/* Prominent Notice Board */}
       {notices.length > 0 && (
         <Card className="border-2 border-primary/40 bg-primary/5 shadow-md">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -145,7 +130,6 @@ const UserDashboard = () => {
         </Card>
       )}
 
-      {/* This Month vs Last Month + Category Breakdown */}
       <div className="grid lg:grid-cols-2 gap-4">
         <Card>
           <CardHeader><CardTitle className="text-base">This Month vs Last Month</CardTitle></CardHeader>
@@ -196,13 +180,13 @@ const UserDashboard = () => {
       </div>
 
       <Card>
-        <CardHeader><CardTitle className="text-base">Recent Personal Expenses</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-base">Recent Expenses</CardTitle></CardHeader>
         <CardContent>
-          {personal.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No personal expenses yet. Start tracking in Personal Expenses.</p>
+          {roomExpenses.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No expenses yet.</p>
           ) : (
             <div className="space-y-3">
-              {personal.slice(0, 5).map((e: any) => (
+              {roomExpenses.slice(0, 5).map((e: any) => (
                 <div key={e.id} className="flex items-center justify-between text-sm">
                   <div>
                     <p className="font-medium text-foreground">{e.description || e.category}</p>

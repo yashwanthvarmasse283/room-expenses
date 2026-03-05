@@ -5,7 +5,7 @@ import { Progress } from '@/components/ui/progress';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { TrendingUp, Wallet, Receipt, Flame } from 'lucide-react';
+import { TrendingUp, TrendingDown, Wallet, Receipt, Flame, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 
 const COLORS = [
   'hsl(215, 65%, 52%)', 'hsl(145, 55%, 42%)', 'hsl(38, 92%, 50%)',
@@ -17,7 +17,7 @@ const TERM_LABELS: Record<number, string> = { 1: 'Term 1 (1-10)', 2: 'Term 2 (11
 const getTermForDay = (day: number) => (day <= 10 ? 1 : day <= 20 ? 2 : 3);
 
 const RoomInsights = () => {
-  const { role, profile } = useAuth();
+  const { profile, role } = useAuth();
   const isAdmin = role === 'admin';
   const adminId = isAdmin ? profile?.id : profile?.admin_id;
 
@@ -41,44 +41,57 @@ const RoomInsights = () => {
     enabled: !!adminId,
   });
 
-  const totalCollection = useMemo(() =>
-    purse.filter((t: any) => t.type === 'inflow').reduce((s: number, t: any) => s + Number(t.amount), 0),
-  [purse]);
+  const { data: contributions = [] } = useQuery({
+    queryKey: ['insights_contributions', adminId],
+    queryFn: async () => {
+      if (!adminId) return [];
+      const { data } = await supabase.from('monthly_contributions').select('*').eq('admin_id', adminId);
+      return data ?? [];
+    },
+    enabled: !!adminId,
+  });
 
-  const totalSpend = useMemo(() =>
-    roomExpenses.reduce((s: number, e: any) => s + Number(e.amount), 0),
-  [roomExpenses]);
+  const now = new Date();
+  const thisMonthExp = useMemo(() => roomExpenses.filter((e: any) => {
+    const d = new Date(e.date);
+    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  }), [roomExpenses]);
 
-  const purseBalance = useMemo(() =>
-    purse.reduce((s: number, t: any) => s + (t.type === 'inflow' ? Number(t.amount) : -Number(t.amount)), 0),
-  [purse]);
+  const lastMonthExp = useMemo(() => roomExpenses.filter((e: any) => {
+    const d = new Date(e.date);
+    const lm = new Date(now.getFullYear(), now.getMonth() - 1);
+    return d.getMonth() === lm.getMonth() && d.getFullYear() === lm.getFullYear();
+  }), [roomExpenses]);
 
-  // Burn rate: avg daily spend this month
+  const thisMonthTotal = thisMonthExp.reduce((s: number, e: any) => s + Number(e.amount), 0);
+  const lastMonthTotal = lastMonthExp.reduce((s: number, e: any) => s + Number(e.amount), 0);
+  const expenseChange = lastMonthTotal > 0 ? Math.round(((thisMonthTotal - lastMonthTotal) / lastMonthTotal) * 100) : 0;
+
+  const thisMonthContribs = contributions.filter((c: any) => c.month === now.getMonth() + 1 && c.year === now.getFullYear() && c.paid);
+  const lastMonthContribs = contributions.filter((c: any) => {
+    const lm = new Date(now.getFullYear(), now.getMonth() - 1);
+    return c.month === lm.getMonth() + 1 && c.year === lm.getFullYear() && c.paid;
+  });
+  const thisContribTotal = thisMonthContribs.length * 500;
+  const lastContribTotal = lastMonthContribs.length * 500;
+
+  const totalCollection = purse.filter((t: any) => t.type === 'inflow').reduce((s: number, t: any) => s + Number(t.amount), 0);
+  const totalSpend = roomExpenses.reduce((s: number, e: any) => s + Number(e.amount), 0);
+  const purseBalance = purse.reduce((s: number, t: any) => s + (t.type === 'inflow' ? Number(t.amount) : -Number(t.amount)), 0);
+
   const burnRate = useMemo(() => {
-    const now = new Date();
-    const thisMonthExp = roomExpenses.filter((e: any) => {
-      const d = new Date(e.date);
-      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-    });
     const total = thisMonthExp.reduce((s: number, e: any) => s + Number(e.amount), 0);
     const dayOfMonth = now.getDate();
     return dayOfMonth > 0 ? Math.round(total / dayOfMonth) : 0;
-  }, [roomExpenses]);
+  }, [thisMonthExp]);
 
-  // Term-wise category breakdown for current month
   const { termData, allCategories, categoryData } = useMemo(() => {
-    const now = new Date();
-    const thisMonth = roomExpenses.filter((e: any) => {
-      const d = new Date(e.date);
-      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-    });
-
     const termTotals: Record<number, { total: number; categories: Record<string, number> }> = {
       1: { total: 0, categories: {} }, 2: { total: 0, categories: {} }, 3: { total: 0, categories: {} },
     };
     const catMap: Record<string, number> = {};
 
-    thisMonth.forEach((e: any) => {
+    thisMonthExp.forEach((e: any) => {
       const day = new Date(e.date).getDate();
       const term = getTermForDay(day);
       const amt = Number(e.amount);
@@ -88,17 +101,19 @@ const RoomInsights = () => {
     });
 
     const cats = new Set<string>();
-    thisMonth.forEach((e: any) => cats.add(e.category));
+    thisMonthExp.forEach((e: any) => cats.add(e.category));
 
     return {
       termData: [1, 2, 3].map(t => ({ term: TERM_LABELS[t], total: termTotals[t].total, ...termTotals[t].categories })),
       allCategories: Array.from(cats),
       categoryData: Object.entries(catMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value),
     };
-  }, [roomExpenses]);
+  }, [thisMonthExp]);
 
-  // Collection vs Spend ratio
   const ratio = totalCollection > 0 ? Math.min(100, Math.round((totalSpend / totalCollection) * 100)) : 0;
+
+  const thisMonthLabel = now.toLocaleString('default', { month: 'short' });
+  const lastMonthLabel = new Date(now.getFullYear(), now.getMonth() - 1).toLocaleString('default', { month: 'short' });
 
   return (
     <div className="space-y-6">
@@ -135,6 +150,41 @@ const RoomInsights = () => {
           <CardContent><div className="text-2xl font-bold text-[hsl(var(--warning))]">₹{burnRate.toLocaleString()}/day</div></CardContent>
         </Card>
       </div>
+
+      {/* Monthly Comparison */}
+      <Card>
+        <CardHeader><CardTitle className="text-base">Monthly Comparison: {lastMonthLabel} vs {thisMonthLabel}</CardTitle></CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="space-y-1">
+              <p className="text-sm text-muted-foreground">Total Expenses</p>
+              <p className="text-lg font-bold text-foreground">₹{thisMonthTotal.toLocaleString()}</p>
+              <div className="flex items-center gap-1 text-xs">
+                {expenseChange >= 0 ? <ArrowUpRight className="w-3 h-3 text-destructive" /> : <ArrowDownRight className="w-3 h-3 text-[hsl(var(--success))]" />}
+                <span className={expenseChange >= 0 ? 'text-destructive' : 'text-[hsl(var(--success))]'}>
+                  {Math.abs(expenseChange)}% {expenseChange >= 0 ? 'increase' : 'decrease'} vs {lastMonthLabel}
+                </span>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm text-muted-foreground">Total Contributions</p>
+              <p className="text-lg font-bold text-foreground">₹{thisContribTotal.toLocaleString()}</p>
+              <p className="text-xs text-muted-foreground">Last month: ₹{lastContribTotal.toLocaleString()}</p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm text-muted-foreground">Balance Difference</p>
+              <p className={`text-lg font-bold ${thisMonthTotal > lastMonthTotal ? 'text-destructive' : 'text-[hsl(var(--success))]'}`}>
+                {thisMonthTotal > lastMonthTotal ? '+' : '-'}₹{Math.abs(thisMonthTotal - lastMonthTotal).toLocaleString()}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {expenseChange !== 0
+                  ? `This month expenses ${expenseChange > 0 ? 'increased' : 'decreased'} by ${Math.abs(expenseChange)}% compared to last month.`
+                  : 'No change from last month.'}
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Collection vs Spend Progress */}
       <Card>
@@ -179,7 +229,6 @@ const RoomInsights = () => {
           </CardContent>
         </Card>
 
-        {/* Term-Wise Stacked Bar */}
         <Card>
           <CardHeader><CardTitle className="text-base">Term-Wise Breakdown (This Month)</CardTitle></CardHeader>
           <CardContent>

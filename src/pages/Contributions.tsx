@@ -4,7 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { CheckCircle2, Clock, History, CalendarDays, CreditCard, Copy } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { CheckCircle2, Clock, History, CalendarDays, CreditCard, Copy, Users } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useMemo, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
@@ -80,13 +81,17 @@ const Contributions = () => {
     const channel = supabase
       .channel('contributions-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'monthly_contributions', filter: `admin_id=eq.${adminId}` },
-        () => qc.invalidateQueries({ queryKey: ['contributions', adminId, year, month] })
+        () => {
+          qc.invalidateQueries({ queryKey: ['contributions', adminId, year, month] });
+          qc.invalidateQueries({ queryKey: ['purse_transactions'] });
+          qc.invalidateQueries({ queryKey: ['personal_wallet'] });
+        }
       )
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [adminId, year, month, qc]);
 
-  const silentMarkPaid = async (memberId: string, memberName: string, term: number, amount?: number) => {
+  const silentMarkPaid = async (memberId: string, memberName: string, term: number) => {
     if (!adminId) return;
     const { data: existing } = await supabase.from('monthly_contributions').select('id').eq('admin_id', adminId).eq('user_id', memberId).eq('year', year).eq('month', month).eq('term', term).maybeSingle();
 
@@ -97,12 +102,10 @@ const Contributions = () => {
       const { error } = await supabase.from('monthly_contributions').insert({ admin_id: adminId, user_id: memberId, user_name: memberName, year, month, term, paid: true, paid_at: new Date().toISOString(), marked_by: user!.id });
       if (error) throw error;
     }
-
-    if (amount && amount > 0) {
-      await supabase.from('purse_transactions').insert({ admin_id: adminId, type: 'inflow', amount, date: new Date().toISOString().slice(0, 10), description: `${memberName} - Term ${term} contribution` });
-      qc.invalidateQueries({ queryKey: ['purse_transactions'] });
-    }
+    // The trigger auto_credit_wallet_on_contribution handles wallet + purse updates
     qc.invalidateQueries({ queryKey: ['contributions'] });
+    qc.invalidateQueries({ queryKey: ['purse_transactions'] });
+    qc.invalidateQueries({ queryKey: ['personal_wallet'] });
   };
 
   const handlePayNow = (memberId: string, memberName: string, term: number) => {
@@ -147,6 +150,129 @@ const Contributions = () => {
     toast({ title: 'VPA Copied', description: getUpiVpa() });
   };
 
+  // Admin overview data
+  const overviewData = useMemo(() => {
+    return members.map((m: any) => {
+      const termStatuses = [1, 2, 3].map(term => {
+        const record = getStatus(m.user_id, term);
+        return {
+          term,
+          paid: record?.paid === true,
+          paidAt: record?.paid_at,
+          amount: record?.paid ? 500 : 0,
+        };
+      });
+      return { ...m, termStatuses };
+    });
+  }, [members, contributions]);
+
+  const TermCards = () => (
+    <div className="grid gap-4">
+      {[1, 2, 3].map(term => (
+        <Card key={term} className={isCurrentMonth && term === currentTerm ? 'border-2 border-primary/50' : ''}>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                <CalendarDays className="w-4 h-4 text-primary" />Term {term}: {TERM_LABELS[term]}
+              </CardTitle>
+              {isCurrentMonth && term === currentTerm && <Badge variant="default" className="text-xs">Current</Badge>}
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {members.map((m: any) => {
+                const record = getStatus(m.user_id, term);
+                const isPaid = record?.paid === true;
+                const isSelf = m.user_id === user?.id;
+                const isAdminMember = m.id === adminId;
+                const canMark = (isAdmin || isSelf) && !isViewOnly;
+                const hideContribButton = isAdmin && isAdminMember && !adminContribEnabled;
+
+                return (
+                  <div key={m.user_id} className="flex items-center justify-between py-2 px-3 rounded-lg bg-muted/50">
+                    <div className="flex items-center gap-2">
+                      {isPaid ? <CheckCircle2 className="w-4 h-4 text-[hsl(var(--success))]" /> : <Clock className="w-4 h-4 text-[hsl(var(--warning))]" />}
+                      <span className="text-sm font-medium text-foreground">{m.name}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {isPaid ? (
+                        <>
+                          <Badge variant="secondary" className="text-xs bg-[hsl(var(--success))]/10 text-[hsl(var(--success))]">Paid</Badge>
+                          {isAdmin && !isViewOnly && (
+                            <Button size="sm" variant="ghost" className="text-xs h-7" onClick={() => markUnpaid.mutate({ memberId: m.user_id, term })}>Undo</Button>
+                          )}
+                        </>
+                      ) : (
+                        canMark && !hideContribButton && (
+                          <div className="flex items-center gap-1">
+                            {isSelf && (
+                              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => handlePayNow(m.user_id, m.name, term)}>
+                                <CreditCard className="w-3 h-3 mr-1" />Pay Now
+                              </Button>
+                            )}
+                            <Button size="sm" className="h-7 text-xs" onClick={() => markPaid.mutate({ memberId: m.user_id, memberName: m.name, term })}>Mark Paid</Button>
+                          </div>
+                        )
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+              {members.length === 0 && <p className="text-sm text-muted-foreground">No members found.</p>}
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+
+  const AdminOverview = () => (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <Users className="w-4 h-4 text-primary" />Contributions Overview
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border">
+                <th className="text-left py-2 px-3 text-muted-foreground font-medium">User</th>
+                <th className="text-center py-2 px-3 text-muted-foreground font-medium">Term 1</th>
+                <th className="text-center py-2 px-3 text-muted-foreground font-medium">Term 2</th>
+                <th className="text-center py-2 px-3 text-muted-foreground font-medium">Term 3</th>
+                <th className="text-right py-2 px-3 text-muted-foreground font-medium">Total Paid</th>
+              </tr>
+            </thead>
+            <tbody>
+              {overviewData.map((m: any) => (
+                <tr key={m.user_id} className="border-b border-border/50">
+                  <td className="py-2 px-3 font-medium text-foreground">{m.name}</td>
+                  {m.termStatuses.map((ts: any) => (
+                    <td key={ts.term} className="text-center py-2 px-3">
+                      {ts.paid ? (
+                        <div>
+                          <Badge variant="secondary" className="text-[10px] bg-[hsl(var(--success))]/10 text-[hsl(var(--success))]">₹500</Badge>
+                          {ts.paidAt && <p className="text-[10px] text-muted-foreground mt-0.5">{new Date(ts.paidAt).toLocaleDateString()}</p>}
+                        </div>
+                      ) : (
+                        <Badge variant="outline" className="text-[10px] text-muted-foreground">Pending</Badge>
+                      )}
+                    </td>
+                  ))}
+                  <td className="text-right py-2 px-3 font-bold text-foreground">
+                    ₹{m.termStatuses.reduce((s: number, ts: any) => s + ts.amount, 0).toLocaleString()}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </CardContent>
+    </Card>
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -157,7 +283,6 @@ const Contributions = () => {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {/* Copy UPI ID always visible */}
           <Button variant="outline" size="sm" onClick={copyVpa}>
             <Copy className="w-3 h-3 mr-1" />Copy UPI: {getUpiVpa()}
           </Button>
@@ -211,63 +336,22 @@ const Contributions = () => {
         </Card>
       )}
 
-      <div className="grid gap-4">
-        {[1, 2, 3].map(term => (
-          <Card key={term} className={isCurrentMonth && term === currentTerm ? 'border-2 border-primary/50' : ''}>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <CalendarDays className="w-4 h-4 text-primary" />Term {term}: {TERM_LABELS[term]}
-                </CardTitle>
-                {isCurrentMonth && term === currentTerm && <Badge variant="default" className="text-xs">Current</Badge>}
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {members.map((m: any) => {
-                  const record = getStatus(m.user_id, term);
-                  const isPaid = record?.paid === true;
-                  const isSelf = m.user_id === user?.id;
-                  const isAdminMember = m.id === adminId;
-                  const canMark = (isAdmin || isSelf) && !isViewOnly;
-                  const hideContribButton = isAdmin && isAdminMember && !adminContribEnabled;
-
-                  return (
-                    <div key={m.user_id} className="flex items-center justify-between py-2 px-3 rounded-lg bg-muted/50">
-                      <div className="flex items-center gap-2">
-                        {isPaid ? <CheckCircle2 className="w-4 h-4 text-[hsl(var(--success))]" /> : <Clock className="w-4 h-4 text-[hsl(var(--warning))]" />}
-                        <span className="text-sm font-medium text-foreground">{m.name}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {isPaid ? (
-                          <>
-                            <Badge variant="secondary" className="text-xs bg-[hsl(var(--success))]/10 text-[hsl(var(--success))]">Paid</Badge>
-                            {isAdmin && !isViewOnly && (
-                              <Button size="sm" variant="ghost" className="text-xs h-7" onClick={() => markUnpaid.mutate({ memberId: m.user_id, term })}>Undo</Button>
-                            )}
-                          </>
-                        ) : (
-                          canMark && !hideContribButton && (
-                            <div className="flex items-center gap-1">
-                              {isSelf && (
-                                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => handlePayNow(m.user_id, m.name, term)}>
-                                  <CreditCard className="w-3 h-3 mr-1" />Pay Now
-                                </Button>
-                              )}
-                              <Button size="sm" className="h-7 text-xs" onClick={() => markPaid.mutate({ memberId: m.user_id, memberName: m.name, term })}>Mark Paid</Button>
-                            </div>
-                          )
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-                {members.length === 0 && <p className="text-sm text-muted-foreground">No members found.</p>}
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      {isAdmin ? (
+        <Tabs defaultValue="manage">
+          <TabsList>
+            <TabsTrigger value="manage">Manage</TabsTrigger>
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+          </TabsList>
+          <TabsContent value="manage" className="mt-4">
+            <TermCards />
+          </TabsContent>
+          <TabsContent value="overview" className="mt-4">
+            <AdminOverview />
+          </TabsContent>
+        </Tabs>
+      ) : (
+        <TermCards />
+      )}
     </div>
   );
 };

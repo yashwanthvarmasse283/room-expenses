@@ -10,7 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 const Messages = () => {
-  const { user, role, profile } = useAuth();
+  const { user, role, profile, isViewOnly } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const isAdmin = role === 'admin';
@@ -34,12 +34,10 @@ const Messages = () => {
 
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!content.trim() || !user || !profile?.admin_id) return;
+    if (!content.trim() || !user || !profile?.admin_id || isViewOnly) return;
     const { error } = await supabase.from('messages').insert({
-      from_user_id: user.id,
-      from_user_name: profile.name,
-      to_admin_id: profile.admin_id,
-      content: content.trim(),
+      from_user_id: user.id, from_user_name: profile.name,
+      to_admin_id: profile.admin_id, content: content.trim(),
     });
     if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
     queryClient.invalidateQueries({ queryKey: ['messages'] });
@@ -48,6 +46,7 @@ const Messages = () => {
   };
 
   const reply = async (msgId: string) => {
+    if (isViewOnly) return;
     const text = replyContent[msgId]?.trim();
     if (!text) return;
     const { error } = await supabase.from('messages').update({ reply: text, read: true }).eq('id', msgId);
@@ -66,7 +65,7 @@ const Messages = () => {
     <div className="space-y-6">
       <h1 className="text-2xl font-bold text-foreground">Messages</h1>
 
-      {!isAdmin && (
+      {!isAdmin && !isViewOnly && (
         <Card>
           <CardContent className="p-4">
             <form onSubmit={sendMessage} className="flex gap-3">
@@ -99,7 +98,7 @@ const Messages = () => {
                   <p className="text-foreground">{m.reply}</p>
                 </div>
               )}
-              {isAdmin && !m.reply && (
+              {isAdmin && !m.reply && !isViewOnly && (
                 <div className="flex gap-2">
                   <Input
                     placeholder="Reply..."

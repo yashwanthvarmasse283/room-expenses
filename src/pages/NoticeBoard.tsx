@@ -12,7 +12,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 const NoticeBoard = () => {
-  const { role, profile } = useAuth();
+  const { role, profile, isViewOnly } = useAuth();
   const isAdmin = role === 'admin';
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -32,7 +32,6 @@ const NoticeBoard = () => {
     enabled: !!adminId,
   });
 
-  // Real-time
   useEffect(() => {
     if (!adminId) return;
     const channel = supabase
@@ -46,7 +45,7 @@ const NoticeBoard = () => {
 
   const post = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!profile) return;
+    if (!profile || isViewOnly) return;
     const { error } = await supabase.from('notices').insert({ admin_id: profile.id, title: title.trim(), content: content.trim() });
     if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
     queryClient.invalidateQueries({ queryKey: ['notices'] });
@@ -55,6 +54,7 @@ const NoticeBoard = () => {
   };
 
   const remove = async (id: string) => {
+    if (isViewOnly) return;
     await supabase.from('notices').delete().eq('id', id);
     queryClient.invalidateQueries({ queryKey: ['notices'] });
     toast({ title: 'Deleted' });
@@ -64,7 +64,7 @@ const NoticeBoard = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-2xl font-bold text-foreground">Notice Board</h1>
-        {isAdmin && (
+        {isAdmin && !isViewOnly && (
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild><Button><Plus className="w-4 h-4 mr-1" />Post Notice</Button></DialogTrigger>
             <DialogContent>
@@ -90,7 +90,7 @@ const NoticeBoard = () => {
                   <Megaphone className="w-4 h-4 text-primary" />
                   <CardTitle className="text-base">{n.title}</CardTitle>
                 </div>
-                {isAdmin && (
+                {isAdmin && !isViewOnly && (
                   <Button variant="ghost" size="icon" onClick={() => remove(n.id)}>
                     <Trash2 className="w-4 h-4 text-destructive" />
                   </Button>
