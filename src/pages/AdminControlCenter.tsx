@@ -406,7 +406,6 @@ const AdminControlCenter = () => {
           <DialogHeader><DialogTitle>Contribution Limits: {limitsForUser?.name}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">Set the contribution amount for each term.</p>
-            {[1, 2, 3].forEach(() => {})}
             {[1, 2, 3].map(term => (
               <div key={term} className="flex items-center justify-between gap-3">
                 <Label className="text-sm whitespace-nowrap">Term {term}</Label>
