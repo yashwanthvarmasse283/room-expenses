@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CheckCircle2, Clock, History, CalendarDays, CreditCard, Copy, Users } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { getUpiVpa, getUpiQrValue, triggerUpiPayment } from '@/lib/upiHelper';
 import { QRCodeSVG } from 'qrcode.react';
@@ -35,6 +35,8 @@ const Contributions = () => {
   const currentTerm = getCurrentTerm();
   const [pendingPayment, setPendingPayment] = useState<{ memberId: string; memberName: string; term: number } | null>(null);
   const [showFallback, setShowFallback] = useState(false);
+  // Track in-flight mutations to prevent double clicks
+  const processingRef = useRef<Set<string>>(new Set());
 
   const { data: adminProfile } = useQuery({
     queryKey: ['admin_profile_contrib', adminId],
@@ -61,6 +63,16 @@ const Contributions = () => {
     enabled: !!adminId,
   });
 
+  const { data: virtualMembers = [] } = useQuery({
+    queryKey: ['virtual_roommates_contrib', adminId],
+    queryFn: async () => {
+      if (!adminId) return [];
+      const { data } = await supabase.from('virtual_roommates').select('*').eq('admin_id', adminId);
+      return data ?? [];
+    },
+    enabled: !!adminId,
+  });
+
   const { data: contributions = [] } = useQuery({
     queryKey: ['contributions', adminId, year, month],
     queryFn: async () => {
@@ -75,6 +87,21 @@ const Contributions = () => {
     },
     enabled: !!adminId,
   });
+
+  const { data: contribLimits = [] } = useQuery({
+    queryKey: ['contribution_limits', adminId],
+    queryFn: async () => {
+      if (!adminId) return [];
+      const { data } = await supabase.from('contribution_limits').select('*').eq('admin_id', adminId);
+      return data ?? [];
+    },
+    enabled: !!adminId,
+  });
+
+  const getLimit = (userId: string, term: number) => {
+    const limit = contribLimits.find((l: any) => l.user_id === userId && l.term === term);
+    return limit ? Number(limit.amount) : 500;
+  };
 
   useEffect(() => {
     if (!adminId) return;
@@ -93,19 +120,41 @@ const Contributions = () => {
 
   const silentMarkPaid = async (memberId: string, memberName: string, term: number) => {
     if (!adminId) return;
-    const { data: existing } = await supabase.from('monthly_contributions').select('id').eq('admin_id', adminId).eq('user_id', memberId).eq('year', year).eq('month', month).eq('term', term).maybeSingle();
+    const key = `${memberId}-${term}-${month}-${year}`;
+    
+    // Idempotency: prevent double calls
+    if (processingRef.current.has(key)) return;
+    processingRef.current.add(key);
 
-    if (existing) {
-      const { error } = await supabase.from('monthly_contributions').update({ paid: true, paid_at: new Date().toISOString(), marked_by: user!.id }).eq('id', existing.id);
-      if (error) throw error;
-    } else {
-      const { error } = await supabase.from('monthly_contributions').insert({ admin_id: adminId, user_id: memberId, user_name: memberName, year, month, term, paid: true, paid_at: new Date().toISOString(), marked_by: user!.id });
-      if (error) throw error;
+    try {
+      // Check if already paid (idempotency)
+      const { data: existing } = await supabase.from('monthly_contributions')
+        .select('id, paid')
+        .eq('admin_id', adminId).eq('user_id', memberId)
+        .eq('year', year).eq('month', month).eq('term', term)
+        .maybeSingle();
+
+      if (existing?.paid) {
+        // Already paid, don't duplicate
+        return;
+      }
+
+      if (existing) {
+        const { error } = await supabase.from('monthly_contributions')
+          .update({ paid: true, paid_at: new Date().toISOString(), marked_by: user!.id })
+          .eq('id', existing.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('monthly_contributions')
+          .insert({ admin_id: adminId, user_id: memberId, user_name: memberName, year, month, term, paid: true, paid_at: new Date().toISOString(), marked_by: user!.id });
+        if (error) throw error;
+      }
+      qc.invalidateQueries({ queryKey: ['contributions'] });
+      qc.invalidateQueries({ queryKey: ['purse_transactions'] });
+      qc.invalidateQueries({ queryKey: ['personal_wallet'] });
+    } finally {
+      processingRef.current.delete(key);
     }
-    // The trigger auto_credit_wallet_on_contribution handles wallet + purse updates
-    qc.invalidateQueries({ queryKey: ['contributions'] });
-    qc.invalidateQueries({ queryKey: ['purse_transactions'] });
-    qc.invalidateQueries({ queryKey: ['personal_wallet'] });
   };
 
   const handlePayNow = (memberId: string, memberName: string, term: number) => {
@@ -150,21 +199,30 @@ const Contributions = () => {
     toast({ title: 'VPA Copied', description: getUpiVpa() });
   };
 
+  // Combine real + virtual members for display
+  const allDisplayMembers = useMemo(() => {
+    const real = members.map((m: any) => ({ id: m.user_id, name: m.name, profileId: m.id, isVirtual: false }));
+    const virtual = virtualMembers.map((v: any) => ({ id: v.id, name: v.name, profileId: null, isVirtual: true }));
+    return [...real, ...virtual];
+  }, [members, virtualMembers]);
+
   // Admin overview data
   const overviewData = useMemo(() => {
-    return members.map((m: any) => {
+    return allDisplayMembers.map((m: any) => {
       const termStatuses = [1, 2, 3].map(term => {
-        const record = getStatus(m.user_id, term);
+        const record = getStatus(m.id, term);
+        const limit = getLimit(m.id, term);
         return {
           term,
           paid: record?.paid === true,
           paidAt: record?.paid_at,
-          amount: record?.paid ? 500 : 0,
+          amount: record?.paid ? limit : 0,
+          limit,
         };
       });
       return { ...m, termStatuses };
     });
-  }, [members, contributions]);
+  }, [allDisplayMembers, contributions, contribLimits]);
 
   const TermCards = () => (
     <div className="grid gap-4">
@@ -180,37 +238,49 @@ const Contributions = () => {
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              {members.map((m: any) => {
-                const record = getStatus(m.user_id, term);
+              {allDisplayMembers.map((m: any) => {
+                const record = getStatus(m.id, term);
                 const isPaid = record?.paid === true;
-                const isSelf = m.user_id === user?.id;
-                const isAdminMember = m.id === adminId;
+                const isSelf = m.id === user?.id;
+                const isAdminMember = m.profileId === adminId;
                 const canMark = (isAdmin || isSelf) && !isViewOnly;
                 const hideContribButton = isAdmin && isAdminMember && !adminContribEnabled;
+                const limit = getLimit(m.id, term);
+                const mutationKey = `${m.id}-${term}`;
+                const isProcessing = markPaid.isPending || confirmPayment.isPending;
 
                 return (
-                  <div key={m.user_id} className="flex items-center justify-between py-2 px-3 rounded-lg bg-muted/50">
+                  <div key={m.id} className="flex items-center justify-between py-2 px-3 rounded-lg bg-muted/50">
                     <div className="flex items-center gap-2">
                       {isPaid ? <CheckCircle2 className="w-4 h-4 text-[hsl(var(--success))]" /> : <Clock className="w-4 h-4 text-[hsl(var(--warning))]" />}
-                      <span className="text-sm font-medium text-foreground">{m.name}</span>
+                      <div>
+                        <span className="text-sm font-medium text-foreground">{m.name}</span>
+                        {m.isVirtual && <span className="text-[10px] text-muted-foreground ml-1">(Virtual)</span>}
+                        <p className="text-[10px] text-muted-foreground">Limit: ₹{limit}</p>
+                      </div>
                     </div>
                     <div className="flex items-center gap-2">
                       {isPaid ? (
                         <>
-                          <Badge variant="secondary" className="text-xs bg-[hsl(var(--success))]/10 text-[hsl(var(--success))]">Paid</Badge>
+                          <Badge variant="secondary" className="text-xs bg-[hsl(var(--success))]/10 text-[hsl(var(--success))]">₹{limit} Paid</Badge>
                           {isAdmin && !isViewOnly && (
-                            <Button size="sm" variant="ghost" className="text-xs h-7" onClick={() => markUnpaid.mutate({ memberId: m.user_id, term })}>Undo</Button>
+                            <Button size="sm" variant="ghost" className="text-xs h-7" onClick={() => markUnpaid.mutate({ memberId: m.id, term })} disabled={markUnpaid.isPending}>Undo</Button>
                           )}
                         </>
                       ) : (
                         canMark && !hideContribButton && (
                           <div className="flex items-center gap-1">
-                            {isSelf && (
-                              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => handlePayNow(m.user_id, m.name, term)}>
+                            {isSelf && !m.isVirtual && (
+                              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => handlePayNow(m.id, m.name, term)} disabled={isProcessing}>
                                 <CreditCard className="w-3 h-3 mr-1" />Pay Now
                               </Button>
                             )}
-                            <Button size="sm" className="h-7 text-xs" onClick={() => markPaid.mutate({ memberId: m.user_id, memberName: m.name, term })}>Mark Paid</Button>
+                            <Button size="sm" className="h-7 text-xs" 
+                              onClick={() => markPaid.mutate({ memberId: m.id, memberName: m.name, term })}
+                              disabled={isProcessing}
+                            >
+                              {isProcessing ? 'Processing...' : 'Mark Paid'}
+                            </Button>
                           </div>
                         )
                       )}
@@ -218,7 +288,7 @@ const Contributions = () => {
                   </div>
                 );
               })}
-              {members.length === 0 && <p className="text-sm text-muted-foreground">No members found.</p>}
+              {allDisplayMembers.length === 0 && <p className="text-sm text-muted-foreground">No members found.</p>}
             </div>
           </CardContent>
         </Card>
@@ -247,17 +317,23 @@ const Contributions = () => {
             </thead>
             <tbody>
               {overviewData.map((m: any) => (
-                <tr key={m.user_id} className="border-b border-border/50">
-                  <td className="py-2 px-3 font-medium text-foreground">{m.name}</td>
+                <tr key={m.id} className="border-b border-border/50">
+                  <td className="py-2 px-3 font-medium text-foreground">
+                    {m.name}
+                    {m.isVirtual && <span className="text-[10px] text-muted-foreground ml-1">(V)</span>}
+                  </td>
                   {m.termStatuses.map((ts: any) => (
                     <td key={ts.term} className="text-center py-2 px-3">
                       {ts.paid ? (
                         <div>
-                          <Badge variant="secondary" className="text-[10px] bg-[hsl(var(--success))]/10 text-[hsl(var(--success))]">₹500</Badge>
+                          <Badge variant="secondary" className="text-[10px] bg-[hsl(var(--success))]/10 text-[hsl(var(--success))]">₹{ts.limit}</Badge>
                           {ts.paidAt && <p className="text-[10px] text-muted-foreground mt-0.5">{new Date(ts.paidAt).toLocaleDateString()}</p>}
                         </div>
                       ) : (
-                        <Badge variant="outline" className="text-[10px] text-muted-foreground">Pending</Badge>
+                        <div>
+                          <Badge variant="outline" className="text-[10px] text-muted-foreground">Pending</Badge>
+                          <p className="text-[10px] text-muted-foreground mt-0.5">Limit: ₹{ts.limit}</p>
+                        </div>
                       )}
                     </td>
                   ))}
@@ -301,7 +377,7 @@ const Contributions = () => {
                 <p className="text-sm text-muted-foreground">Completed your UPI payment? Confirm below.</p>
               </div>
               <Button onClick={() => confirmPayment.mutate()} disabled={confirmPayment.isPending}>
-                <CheckCircle2 className="w-4 h-4 mr-1" />Confirm Payment
+                <CheckCircle2 className="w-4 h-4 mr-1" />{confirmPayment.isPending ? 'Processing...' : 'Confirm Payment'}
               </Button>
             </div>
             {showFallback && (
