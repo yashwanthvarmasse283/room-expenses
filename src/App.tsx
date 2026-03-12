@@ -22,6 +22,7 @@ import AccountSettings from "./pages/AccountSettings";
 import NotFound from "./pages/NotFound";
 import Contributions from "./pages/Contributions";
 import RecurringBills from "./pages/RecurringBills";
+import Settlements from "./pages/Settlements";
 import { Loader2, ShieldAlert } from "lucide-react";
 
 const queryClient = new QueryClient();
