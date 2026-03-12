@@ -8,7 +8,8 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
-import { Plus, Pencil, Trash2, Search } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Plus, Pencil, Trash2, Search, Users } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -29,6 +30,7 @@ const RoomExpenses = () => {
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [paidBy, setPaidBy] = useState('');
+  const [selectedSplitMembers, setSelectedSplitMembers] = useState<string[]>([]);
 
   const adminId = isAdmin ? profile?.id : profile?.admin_id;
 
@@ -41,6 +43,32 @@ const RoomExpenses = () => {
     },
     enabled: !!adminId,
   });
+
+  const { data: members = [] } = useQuery({
+    queryKey: ['room_members_expenses', adminId],
+    queryFn: async () => {
+      if (!adminId) return [];
+      const { data } = await supabase.from('profiles').select('id, user_id, name').or(`id.eq.${adminId},admin_id.eq.${adminId}`).eq('approved', true);
+      return data ?? [];
+    },
+    enabled: !!adminId,
+  });
+
+  const { data: virtualMembers = [] } = useQuery({
+    queryKey: ['virtual_roommates', adminId],
+    queryFn: async () => {
+      if (!adminId) return [];
+      const { data } = await supabase.from('virtual_roommates').select('*').eq('admin_id', adminId);
+      return data ?? [];
+    },
+    enabled: !!adminId,
+  });
+
+  const allMembers = useMemo(() => {
+    const real = members.map((m: any) => ({ id: m.user_id || m.id, name: m.name, type: 'real' }));
+    const virtual = virtualMembers.map((v: any) => ({ id: v.id, name: v.name, type: 'virtual' }));
+    return [...real, ...virtual];
+  }, [members, virtualMembers]);
 
   const { data: budgetData } = useQuery({
     queryKey: ['daily_food_budget', adminId],
@@ -64,6 +92,15 @@ const RoomExpenses = () => {
     return map;
   }, [expenses]);
 
+  // Daily totals for spending limit warning
+  const dailyTotals = useMemo(() => {
+    const map: Record<string, number> = {};
+    expenses.forEach((e: any) => {
+      map[e.date] = (map[e.date] || 0) + Number(e.amount);
+    });
+    return map;
+  }, [expenses]);
+
   useEffect(() => {
     if (!adminId) return;
     const channel = supabase
@@ -75,30 +112,41 @@ const RoomExpenses = () => {
     return () => { supabase.removeChannel(channel); };
   }, [adminId, queryClient]);
 
-  const resetForm = () => { setDate(''); setCategory('Food'); setAmount(''); setDescription(''); setPaidBy(''); setEditingId(null); };
+  const resetForm = () => {
+    setDate(''); setCategory('Food'); setAmount(''); setDescription(''); setPaidBy('');
+    setEditingId(null); setSelectedSplitMembers([]);
+  };
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!profile || isViewOnly) return;
 
-    // Check daily spending limit warning
-    if (!editingId && dailyFoodBudget > 0 && category.toLowerCase() === 'food') {
-      const existingTotal = dailyFoodTotals[date] || 0;
-      if (existingTotal + Number(amount) > dailyFoodBudget) {
-        toast({ title: '⚠️ Daily spending limit exceeded.', description: `Food budget for ${date}: ₹${dailyFoodBudget}`, variant: 'destructive' });
+    // Daily spending limit warning
+    if (!editingId) {
+      const existingDailyTotal = dailyTotals[date] || 0;
+      if (dailyFoodBudget > 0 && existingDailyTotal + Number(amount) > dailyFoodBudget * allMembers.length) {
+        toast({ title: '⚠️ Daily spending limit exceeded.', description: `Total for ${date} will exceed the daily budget.`, variant: 'destructive' });
+      }
+      if (category.toLowerCase() === 'food') {
+        const existingFoodTotal = dailyFoodTotals[date] || 0;
+        if (existingFoodTotal + Number(amount) > dailyFoodBudget) {
+          toast({ title: '⚠️ Daily food budget exceeded.', description: `Food budget for ${date}: ₹${dailyFoodBudget}`, variant: 'destructive' });
+        }
       }
     }
 
+    const splitAmong = selectedSplitMembers.length > 0 ? selectedSplitMembers : null;
+
     if (editingId) {
       const { error } = await supabase.from('room_expenses')
-        .update({ date, category, amount: Number(amount), description, paid_by: paidBy })
+        .update({ date, category, amount: Number(amount), description, paid_by: paidBy, split_among: splitAmong })
         .eq('id', editingId);
       if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
       toast({ title: 'Updated' });
     } else {
       const expAdminId = isAdmin ? profile.id : profile.admin_id!;
       const { error } = await supabase.from('room_expenses')
-        .insert({ admin_id: expAdminId, date, category, amount: Number(amount), description, paid_by: paidBy || profile.name });
+        .insert({ admin_id: expAdminId, date, category, amount: Number(amount), description, paid_by: paidBy || profile.name, split_among: splitAmong });
       if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
       await supabase.from('purse_transactions')
         .insert({ admin_id: expAdminId, type: 'outflow', amount: Number(amount), date, description: `Room: ${description || category}` });
@@ -122,8 +170,20 @@ const RoomExpenses = () => {
     if (isViewOnly) return;
     setEditingId(exp.id); setDate(exp.date); setCategory(exp.category);
     setAmount(String(exp.amount)); setDescription(exp.description || ''); setPaidBy(exp.paid_by || '');
+    setSelectedSplitMembers(exp.split_among || []);
     setOpen(true);
   };
+
+  const toggleSplitMember = (name: string) => {
+    setSelectedSplitMembers(prev =>
+      prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name]
+    );
+  };
+
+  const perPersonShare = useMemo(() => {
+    if (!amount || selectedSplitMembers.length === 0) return 0;
+    return Math.round((Number(amount) / selectedSplitMembers.length) * 100) / 100;
+  }, [amount, selectedSplitMembers]);
 
   const filtered = expenses.filter((e: any) => {
     const matchSearch = !search || (e.description || '').toLowerCase().includes(search.toLowerCase()) || e.category.toLowerCase().includes(search.toLowerCase());
@@ -165,7 +225,7 @@ const RoomExpenses = () => {
             <DialogTrigger asChild>
               <Button><Plus className="w-4 h-4 mr-1" />Add Expense</Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="max-h-[85vh] overflow-y-auto">
               <DialogHeader><DialogTitle>{editingId ? 'Edit' : 'Add'} Expense</DialogTitle></DialogHeader>
               <form onSubmit={save} className="space-y-4">
                 <div className="grid grid-cols-2 gap-3">
@@ -182,6 +242,29 @@ const RoomExpenses = () => {
                   <div className="space-y-2"><Label>Paid By</Label><Input value={paidBy} onChange={e => setPaidBy(e.target.value)} /></div>
                 </div>
                 <div className="space-y-2"><Label>Description</Label><Textarea value={description} onChange={e => setDescription(e.target.value)} /></div>
+
+                {/* Split Among */}
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2"><Users className="w-4 h-4" />Split Among</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {allMembers.map(m => (
+                      <label key={m.id} className="flex items-center gap-2 text-sm p-2 rounded-lg bg-muted/50 cursor-pointer hover:bg-muted">
+                        <Checkbox
+                          checked={selectedSplitMembers.includes(m.name)}
+                          onCheckedChange={() => toggleSplitMember(m.name)}
+                        />
+                        <span className="text-foreground">{m.name}</span>
+                        {m.type === 'virtual' && <span className="text-[10px] text-muted-foreground">(Virtual)</span>}
+                      </label>
+                    ))}
+                  </div>
+                  {selectedSplitMembers.length > 0 && amount && (
+                    <p className="text-xs text-muted-foreground">
+                      Each person pays: <span className="font-bold text-foreground">₹{perPersonShare.toLocaleString()}</span> ({selectedSplitMembers.length} people)
+                    </p>
+                  )}
+                </div>
+
                 <Button className="w-full" type="submit">{editingId ? 'Update' : 'Add'} Expense</Button>
               </form>
             </DialogContent>
@@ -226,6 +309,11 @@ const RoomExpenses = () => {
                         <span className="text-xs px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground">{e.category}</span>
                       </div>
                       {e.paid_by && <p className="text-xs text-muted-foreground mt-0.5">Paid by {e.paid_by}</p>}
+                      {e.split_among && e.split_among.length > 0 && (
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Split: {e.split_among.join(', ')} · ₹{(Number(e.amount) / e.split_among.length).toFixed(0)} each
+                        </p>
+                      )}
                     </div>
                     <div className="flex items-center gap-3">
                       <span className="font-bold text-foreground">₹{Number(e.amount).toLocaleString()}</span>

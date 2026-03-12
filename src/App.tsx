@@ -22,6 +22,7 @@ import AccountSettings from "./pages/AccountSettings";
 import NotFound from "./pages/NotFound";
 import Contributions from "./pages/Contributions";
 import RecurringBills from "./pages/RecurringBills";
+import Settlements from "./pages/Settlements";
 import { Loader2, ShieldAlert } from "lucide-react";
 
 const queryClient = new QueryClient();
@@ -80,6 +81,7 @@ const AppRoutes = () => (
       <Route path="/notice-board" element={<NoticeBoard />} />
       <Route path="/contributions" element={<Contributions />} />
       <Route path="/recurring-bills" element={<RecurringBills />} />
+      <Route path="/settlements" element={<Settlements />} />
       <Route path="/room-insights" element={<RoomInsights />} />
       <Route path="/account-settings" element={<AccountSettings />} />
       {/* Redirects for old routes */}

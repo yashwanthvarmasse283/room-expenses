@@ -49,6 +49,44 @@ export type Database = {
           },
         ]
       }
+      contribution_limits: {
+        Row: {
+          admin_id: string
+          amount: number
+          created_at: string
+          id: string
+          term: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          admin_id: string
+          amount?: number
+          created_at?: string
+          id?: string
+          term: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          admin_id?: string
+          amount?: number
+          created_at?: string
+          id?: string
+          term?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contribution_limits_admin_id_fkey"
+            columns: ["admin_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       food_toggle: {
         Row: {
           admin_id: string
@@ -503,6 +541,47 @@ export type Database = {
           },
         ]
       }
+      settlements: {
+        Row: {
+          admin_id: string
+          amount: number
+          created_at: string
+          from_user: string
+          id: string
+          settled: boolean
+          settled_at: string | null
+          to_user: string
+        }
+        Insert: {
+          admin_id: string
+          amount: number
+          created_at?: string
+          from_user: string
+          id?: string
+          settled?: boolean
+          settled_at?: string | null
+          to_user: string
+        }
+        Update: {
+          admin_id?: string
+          amount?: number
+          created_at?: string
+          from_user?: string
+          id?: string
+          settled?: boolean
+          settled_at?: string | null
+          to_user?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "settlements_admin_id_fkey"
+            columns: ["admin_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           created_at: string
@@ -523,6 +602,35 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      virtual_roommates: {
+        Row: {
+          admin_id: string
+          created_at: string
+          id: string
+          name: string
+        }
+        Insert: {
+          admin_id: string
+          created_at?: string
+          id?: string
+          name: string
+        }
+        Update: {
+          admin_id?: string
+          created_at?: string
+          id?: string
+          name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "virtual_roommates_admin_id_fkey"
+            columns: ["admin_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
