@@ -6,7 +6,7 @@ import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/s
 import {
   LayoutDashboard, Receipt, Wallet, MessagesSquare, Megaphone,
   Settings, LogOut, Menu, Sun, Moon, ShieldCheck, CalendarCheck,
-  CalendarClock, Lightbulb, CreditCard, MessageSquare
+  CalendarClock, Lightbulb, CreditCard, MessageSquare, HandCoins
 } from 'lucide-react';
 import { useState } from 'react';
 
