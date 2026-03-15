@@ -1,11 +1,13 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Receipt, TrendingUp, Wallet, Megaphone } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
+import { Receipt, TrendingUp, Wallet, Megaphone, AlertTriangle } from 'lucide-react';
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import FoodToggle from '@/components/FoodToggle';
 
 const COLORS = [
   'hsl(215, 65%, 52%)', 'hsl(145, 55%, 42%)', 'hsl(38, 92%, 50%)',
@@ -47,6 +49,26 @@ const UserDashboard = () => {
     enabled: !!adminId,
   });
 
+  const { data: adminProfile } = useQuery({
+    queryKey: ['admin_budget_user', profile?.admin_id],
+    queryFn: async () => {
+      if (!profile?.admin_id) return null;
+      const { data } = await supabase.from('profiles').select('daily_food_budget').eq('id', profile.admin_id).single();
+      return data;
+    },
+    enabled: !!profile?.admin_id,
+  });
+
+  const { data: members = [] } = useQuery({
+    queryKey: ['room_members_user_dash', profile?.admin_id],
+    queryFn: async () => {
+      if (!profile?.admin_id) return [];
+      const { data } = await supabase.from('profiles').select('id').or(`id.eq.${profile.admin_id},admin_id.eq.${profile.admin_id}`).eq('approved', true);
+      return data ?? [];
+    },
+    enabled: !!profile?.admin_id,
+  });
+
   const totalRoom = useMemo(() => roomExpenses.reduce((s: number, e: any) => s + Number(e.amount), 0), [roomExpenses]);
 
   const now = new Date();
@@ -66,6 +88,15 @@ const UserDashboard = () => {
     () => purse.reduce((s: number, t: any) => s + (t.type === 'inflow' ? Number(t.amount) : -Number(t.amount)), 0),
     [purse]
   );
+
+  // Daily budget
+  const dailyFoodBudget = (adminProfile as any)?.daily_food_budget ?? 120;
+  const todayStr = now.toISOString().slice(0, 10);
+  const todayTotal = roomExpenses.filter((e: any) => e.date === todayStr).reduce((s: number, e: any) => s + Number(e.amount), 0);
+  const memberCount = members.length || 1;
+  const dailyLimit = dailyFoodBudget * memberCount;
+  const budgetPercent = dailyLimit > 0 ? Math.min(100, Math.round((todayTotal / dailyLimit) * 100)) : 0;
+  const budgetExceeded = budgetPercent >= 100;
 
   const categoryData = useMemo(() => {
     const map: Record<string, number> = {};
@@ -108,6 +139,29 @@ const UserDashboard = () => {
           </Card>
         ))}
       </div>
+
+      {/* Daily Budget Progress */}
+      <Card className={budgetExceeded ? 'border-destructive/50 bg-destructive/5' : ''}>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-2">
+            {budgetExceeded && <AlertTriangle className="w-4 h-4 text-destructive" />}
+            Today's Spending
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">₹{todayTotal.toLocaleString()} spent today</span>
+            <span className={`font-medium ${budgetExceeded ? 'text-destructive' : 'text-[hsl(var(--success))]'}`}>
+              {budgetExceeded ? 'Over budget!' : `₹${(dailyLimit - todayTotal).toLocaleString()} remaining`}
+            </span>
+          </div>
+          <Progress value={budgetPercent} className={`h-2 ${budgetExceeded ? '[&>div]:bg-destructive' : '[&>div]:bg-[hsl(var(--success))]'}`} />
+          <p className="text-xs text-muted-foreground">Daily limit: ₹{dailyLimit.toLocaleString()}</p>
+        </CardContent>
+      </Card>
+
+      {/* Food Toggle */}
+      <FoodToggle adminId={adminId ?? ''} />
 
       {notices.length > 0 && (
         <Card className="border-2 border-primary/40 bg-primary/5 shadow-md">

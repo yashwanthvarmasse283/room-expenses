@@ -22,7 +22,6 @@ import AccountSettings from "./pages/AccountSettings";
 import NotFound from "./pages/NotFound";
 import Contributions from "./pages/Contributions";
 import RecurringBills from "./pages/RecurringBills";
-import Settlements from "./pages/Settlements";
 import { Loader2, ShieldAlert } from "lucide-react";
 
 const queryClient = new QueryClient();
@@ -42,7 +41,6 @@ const ProtectedRoute = ({ children, adminOnly }: { children: React.ReactNode; ad
   if (loading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
   if (!user) return <Navigate to="/login" replace />;
   
-  // Deactivated users see restriction page
   if (profile?.deactivated) return <DeactivatedPage />;
   
   if (role === 'user' && !profile?.approved) return (
@@ -81,7 +79,6 @@ const AppRoutes = () => (
       <Route path="/notice-board" element={<NoticeBoard />} />
       <Route path="/contributions" element={<Contributions />} />
       <Route path="/recurring-bills" element={<RecurringBills />} />
-      <Route path="/settlements" element={<Settlements />} />
       <Route path="/room-insights" element={<RoomInsights />} />
       <Route path="/account-settings" element={<AccountSettings />} />
       {/* Redirects for old routes */}
@@ -89,6 +86,7 @@ const AppRoutes = () => (
       <Route path="/profile-settings" element={<Navigate to="/account-settings" replace />} />
       <Route path="/analytics" element={<Navigate to="/room-insights" replace />} />
       <Route path="/personal-expenses" element={<Navigate to="/personal-wallet" replace />} />
+      <Route path="/settlements" element={<Navigate to="/dashboard" replace />} />
     </Route>
     <Route path="*" element={<NotFound />} />
   </Routes>

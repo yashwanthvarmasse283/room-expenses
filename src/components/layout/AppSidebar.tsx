@@ -6,7 +6,7 @@ import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/s
 import {
   LayoutDashboard, Receipt, Wallet, MessagesSquare, Megaphone,
   Settings, LogOut, Menu, Sun, Moon, ShieldCheck, CalendarCheck,
-  CalendarClock, Lightbulb, CreditCard, MessageSquare, HandCoins
+  CalendarClock, Lightbulb, CreditCard, MessageSquare
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -15,7 +15,6 @@ const adminLinks = [
   { to: '/room-expenses', label: 'Expenses', icon: Receipt },
   { to: '/purse', label: 'Room Funds', icon: Wallet },
   { to: '/contributions', label: 'Contributions', icon: CalendarCheck },
-  { to: '/settlements', label: 'Settlements', icon: HandCoins },
   { to: '/recurring-bills', label: 'Recurring Bills', icon: CalendarClock },
   { to: '/room-insights', label: 'Room Insights', icon: Lightbulb },
   { to: '/admin-control', label: 'Admin Control', icon: ShieldCheck },
@@ -31,7 +30,6 @@ const userLinks = [
   { to: '/room-expenses', label: 'Expenses', icon: Receipt },
   { to: '/purse', label: 'Room Funds', icon: Wallet },
   { to: '/contributions', label: 'Contributions', icon: CalendarCheck },
-  { to: '/settlements', label: 'Settlements', icon: HandCoins },
   { to: '/recurring-bills', label: 'Recurring Bills', icon: CalendarClock },
   { to: '/room-insights', label: 'Room Insights', icon: Lightbulb },
   { to: '/room-chat', label: 'Room Chat', icon: MessagesSquare },
