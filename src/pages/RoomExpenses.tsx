@@ -9,11 +9,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Plus, Pencil, Trash2, Search, Users } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, Users, Download } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-const categories = ['Food', 'Water', 'Rent', 'Electricity', 'Internet', 'Misc'] as const;
+const defaultCategories = ['Food', 'Water', 'Rent', 'Electricity', 'Internet', 'Misc'];
 
 const RoomExpenses = () => {
   const { user, role, profile, isViewOnly } = useAuth();
@@ -27,6 +27,7 @@ const RoomExpenses = () => {
 
   const [date, setDate] = useState('');
   const [category, setCategory] = useState<string>('Food');
+  const [customCategory, setCustomCategory] = useState('');
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [paidBy, setPaidBy] = useState('');
@@ -82,6 +83,13 @@ const RoomExpenses = () => {
 
   const dailyFoodBudget = (budgetData as any)?.daily_food_budget ?? 120;
 
+  // Get unique categories from existing expenses + defaults
+  const allCategories = useMemo(() => {
+    const cats = new Set(defaultCategories);
+    expenses.forEach((e: any) => { if (e.category) cats.add(e.category); });
+    return Array.from(cats);
+  }, [expenses]);
+
   const dailyFoodTotals = useMemo(() => {
     const map: Record<string, number> = {};
     expenses.forEach((e: any) => {
@@ -92,7 +100,6 @@ const RoomExpenses = () => {
     return map;
   }, [expenses]);
 
-  // Daily totals for spending limit warning
   const dailyTotals = useMemo(() => {
     const map: Record<string, number> = {};
     expenses.forEach((e: any) => {
@@ -113,21 +120,28 @@ const RoomExpenses = () => {
   }, [adminId, queryClient]);
 
   const resetForm = () => {
-    setDate(''); setCategory('Food'); setAmount(''); setDescription(''); setPaidBy('');
+    setDate(''); setCategory('Food'); setCustomCategory(''); setAmount(''); setDescription(''); setPaidBy('');
     setEditingId(null); setSelectedSplitMembers([]);
   };
+
+  const getEffectiveCategory = () => category === '_custom' ? customCategory.trim() : category;
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!profile || isViewOnly) return;
 
-    // Daily spending limit warning
+    const effectiveCategory = getEffectiveCategory();
+    if (!effectiveCategory) {
+      toast({ title: 'Please enter a category name', variant: 'destructive' });
+      return;
+    }
+
     if (!editingId) {
       const existingDailyTotal = dailyTotals[date] || 0;
       if (dailyFoodBudget > 0 && existingDailyTotal + Number(amount) > dailyFoodBudget * allMembers.length) {
         toast({ title: '⚠️ Daily spending limit exceeded.', description: `Total for ${date} will exceed the daily budget.`, variant: 'destructive' });
       }
-      if (category.toLowerCase() === 'food') {
+      if (effectiveCategory.toLowerCase() === 'food') {
         const existingFoodTotal = dailyFoodTotals[date] || 0;
         if (existingFoodTotal + Number(amount) > dailyFoodBudget) {
           toast({ title: '⚠️ Daily food budget exceeded.', description: `Food budget for ${date}: ₹${dailyFoodBudget}`, variant: 'destructive' });
@@ -139,17 +153,17 @@ const RoomExpenses = () => {
 
     if (editingId) {
       const { error } = await supabase.from('room_expenses')
-        .update({ date, category, amount: Number(amount), description, paid_by: paidBy, split_among: splitAmong })
+        .update({ date, category: effectiveCategory, amount: Number(amount), description, paid_by: paidBy, split_among: splitAmong })
         .eq('id', editingId);
       if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
       toast({ title: 'Updated' });
     } else {
       const expAdminId = isAdmin ? profile.id : profile.admin_id!;
       const { error } = await supabase.from('room_expenses')
-        .insert({ admin_id: expAdminId, date, category, amount: Number(amount), description, paid_by: paidBy || profile.name, split_among: splitAmong });
+        .insert({ admin_id: expAdminId, date, category: effectiveCategory, amount: Number(amount), description, paid_by: paidBy || profile.name, split_among: splitAmong });
       if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
       await supabase.from('purse_transactions')
-        .insert({ admin_id: expAdminId, type: 'outflow', amount: Number(amount), date, description: `Room: ${description || category}` });
+        .insert({ admin_id: expAdminId, type: 'outflow', amount: Number(amount), date, description: `Room: ${description || effectiveCategory}` });
       toast({ title: 'Added' });
     }
     queryClient.invalidateQueries({ queryKey: ['room_expenses'] });
@@ -168,7 +182,15 @@ const RoomExpenses = () => {
 
   const startEdit = (exp: any) => {
     if (isViewOnly) return;
-    setEditingId(exp.id); setDate(exp.date); setCategory(exp.category);
+    setEditingId(exp.id); setDate(exp.date);
+    // Check if category is a default or custom
+    if (defaultCategories.includes(exp.category)) {
+      setCategory(exp.category);
+      setCustomCategory('');
+    } else {
+      setCategory('_custom');
+      setCustomCategory(exp.category);
+    }
     setAmount(String(exp.amount)); setDescription(exp.description || ''); setPaidBy(exp.paid_by || '');
     setSelectedSplitMembers(exp.split_among || []);
     setOpen(true);
@@ -211,6 +233,21 @@ const RoomExpenses = () => {
     return foodTotal > dailyFoodBudget ? 'border-l-4 border-l-destructive bg-destructive/5' : 'border-l-4 border-l-[hsl(var(--success))] bg-[hsl(var(--success))]/5';
   };
 
+  const exportCsv = () => {
+    const headers = ['Date', 'Category', 'Amount', 'Description', 'Paid By', 'Split Among'];
+    const rows = filtered.map((e: any) => [
+      e.date, e.category, e.amount, e.description || '', e.paid_by || '',
+      e.split_among ? e.split_among.join('; ') : ''
+    ]);
+    const csv = [headers, ...rows].map(r => r.map((c: any) => `"${c}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `room-expenses-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click(); URL.revokeObjectURL(url);
+    toast({ title: 'Exported', description: `${filtered.length} expenses exported to CSV.` });
+  };
+
   const canEdit = isAdmin && !isViewOnly;
 
   return (
@@ -220,56 +257,73 @@ const RoomExpenses = () => {
           <h1 className="text-2xl font-bold text-foreground">Room Expenses</h1>
           <p className="text-sm text-muted-foreground">Monthly total: ₹{monthlyTotal.toLocaleString()} · Food budget: ₹{dailyFoodBudget}/day</p>
         </div>
-        {!isViewOnly && (
-          <Dialog open={open} onOpenChange={o => { setOpen(o); if (!o) resetForm(); }}>
-            <DialogTrigger asChild>
-              <Button><Plus className="w-4 h-4 mr-1" />Add Expense</Button>
-            </DialogTrigger>
-            <DialogContent className="max-h-[85vh] overflow-y-auto">
-              <DialogHeader><DialogTitle>{editingId ? 'Edit' : 'Add'} Expense</DialogTitle></DialogHeader>
-              <form onSubmit={save} className="space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-2"><Label>Date</Label><Input type="date" value={date} onChange={e => setDate(e.target.value)} required /></div>
-                  <div className="space-y-2"><Label>Category</Label>
-                    <Select value={category} onValueChange={setCategory}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>{categories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-2"><Label>Amount (₹)</Label><Input type="number" value={amount} onChange={e => setAmount(e.target.value)} required /></div>
-                  <div className="space-y-2"><Label>Paid By</Label><Input value={paidBy} onChange={e => setPaidBy(e.target.value)} /></div>
-                </div>
-                <div className="space-y-2"><Label>Description</Label><Textarea value={description} onChange={e => setDescription(e.target.value)} /></div>
-
-                {/* Split Among */}
-                <div className="space-y-2">
-                  <Label className="flex items-center gap-2"><Users className="w-4 h-4" />Split Among</Label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {allMembers.map(m => (
-                      <label key={m.id} className="flex items-center gap-2 text-sm p-2 rounded-lg bg-muted/50 cursor-pointer hover:bg-muted">
-                        <Checkbox
-                          checked={selectedSplitMembers.includes(m.name)}
-                          onCheckedChange={() => toggleSplitMember(m.name)}
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={exportCsv}>
+            <Download className="w-4 h-4 mr-1" />Export
+          </Button>
+          {!isViewOnly && (
+            <Dialog open={open} onOpenChange={o => { setOpen(o); if (!o) resetForm(); }}>
+              <DialogTrigger asChild>
+                <Button><Plus className="w-4 h-4 mr-1" />Add Expense</Button>
+              </DialogTrigger>
+              <DialogContent className="max-h-[85vh] overflow-y-auto">
+                <DialogHeader><DialogTitle>{editingId ? 'Edit' : 'Add'} Expense</DialogTitle></DialogHeader>
+                <form onSubmit={save} className="space-y-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2"><Label>Date</Label><Input type="date" value={date} onChange={e => setDate(e.target.value)} required /></div>
+                    <div className="space-y-2"><Label>Category</Label>
+                      <Select value={category} onValueChange={v => { setCategory(v); if (v !== '_custom') setCustomCategory(''); }}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {defaultCategories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                          <SelectItem value="_custom">✏️ Custom...</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {category === '_custom' && (
+                        <Input
+                          placeholder="Enter custom category"
+                          value={customCategory}
+                          onChange={e => setCustomCategory(e.target.value)}
+                          className="mt-2"
+                          required
                         />
-                        <span className="text-foreground">{m.name}</span>
-                        {m.type === 'virtual' && <span className="text-[10px] text-muted-foreground">(Virtual)</span>}
-                      </label>
-                    ))}
+                      )}
+                    </div>
                   </div>
-                  {selectedSplitMembers.length > 0 && amount && (
-                    <p className="text-xs text-muted-foreground">
-                      Each person pays: <span className="font-bold text-foreground">₹{perPersonShare.toLocaleString()}</span> ({selectedSplitMembers.length} people)
-                    </p>
-                  )}
-                </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2"><Label>Amount (₹)</Label><Input type="number" value={amount} onChange={e => setAmount(e.target.value)} required /></div>
+                    <div className="space-y-2"><Label>Paid By</Label><Input value={paidBy} onChange={e => setPaidBy(e.target.value)} /></div>
+                  </div>
+                  <div className="space-y-2"><Label>Description</Label><Textarea value={description} onChange={e => setDescription(e.target.value)} /></div>
 
-                <Button className="w-full" type="submit">{editingId ? 'Update' : 'Add'} Expense</Button>
-              </form>
-            </DialogContent>
-          </Dialog>
-        )}
+                  {/* Split Among */}
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-2"><Users className="w-4 h-4" />Split Among</Label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {allMembers.map(m => (
+                        <label key={m.id} className="flex items-center gap-2 text-sm p-2 rounded-lg bg-muted/50 cursor-pointer hover:bg-muted">
+                          <Checkbox
+                            checked={selectedSplitMembers.includes(m.name)}
+                            onCheckedChange={() => toggleSplitMember(m.name)}
+                          />
+                          <span className="text-foreground">{m.name}</span>
+                          {m.type === 'virtual' && <span className="text-[10px] text-muted-foreground">(Virtual)</span>}
+                        </label>
+                      ))}
+                    </div>
+                    {selectedSplitMembers.length > 0 && amount && (
+                      <p className="text-xs text-muted-foreground">
+                        Each person pays: <span className="font-bold text-foreground">₹{perPersonShare.toLocaleString()}</span> ({selectedSplitMembers.length} people)
+                      </p>
+                    )}
+                  </div>
+
+                  <Button className="w-full" type="submit">{editingId ? 'Update' : 'Add'} Expense</Button>
+                </form>
+              </DialogContent>
+            </Dialog>
+          )}
+        </div>
       </div>
 
       <div className="flex gap-3 flex-wrap">
@@ -281,7 +335,7 @@ const RoomExpenses = () => {
           <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All</SelectItem>
-            {categories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+            {allCategories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
           </SelectContent>
         </Select>
       </div>
