@@ -160,7 +160,7 @@ const RoomExpenses = () => {
     } else {
       const expAdminId = isAdmin ? profile.id : profile.admin_id!;
       const { error } = await supabase.from('room_expenses')
-        .insert({ admin_id: expAdminId, date, category: effectiveCategory, amount: Number(amount), description, paid_by: paidBy || profile.name, split_among: splitAmong });
+        .insert({ admin_id: expAdminId, date, category: effectiveCategory, amount: Number(amount), description, paid_by: paidBy || profile.name, split_among: splitAmong, created_by_name: profile.name });
       if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
       await supabase.from('purse_transactions')
         .insert({ admin_id: expAdminId, type: 'outflow', amount: Number(amount), date, description: `Room: ${description || effectiveCategory}` });
@@ -359,10 +359,13 @@ const RoomExpenses = () => {
                   <CardContent className="flex items-center justify-between p-3">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="font-medium text-foreground text-sm">{e.description || e.category}</span>
+                         <span className="font-medium text-foreground text-sm">{e.description || e.category}</span>
                         <span className="text-xs px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground">{e.category}</span>
                       </div>
                       {e.paid_by && <p className="text-xs text-muted-foreground mt-0.5">Paid by {e.paid_by}</p>}
+                      {(e as any).created_by_name && (e as any).created_by_name !== e.paid_by && (
+                        <p className="text-[10px] text-muted-foreground">Added by {(e as any).created_by_name}</p>
+                      )}
                       {e.split_among && e.split_among.length > 0 && (
                         <p className="text-xs text-muted-foreground mt-0.5">
                           Split: {e.split_among.join(', ')} · ₹{(Number(e.amount) / e.split_among.length).toFixed(0)} each

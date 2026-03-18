@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import DayWiseLimits from '@/components/DayWiseLimits';
+import MonthlyBudgetTarget from '@/components/MonthlyBudgetTarget';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -383,6 +385,12 @@ const AdminControlCenter = () => {
               </div>
             </CardContent>
           </Card>
+
+          {/* Per-Day Daily Limits */}
+          <DayWiseLimits profileId={profile?.id} />
+
+          {/* Monthly Budget Target */}
+          <MonthlyBudgetTarget profileId={profile?.id} />
 
           {/* Admin Contribution Toggle */}
           <Card>

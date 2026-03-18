@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CheckCircle2, Clock, History, CalendarDays, CreditCard, Copy, Users } from 'lucide-react';
+import BulkMarkPaid from '@/components/BulkMarkPaid';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useToast } from '@/hooks/use-toast';
@@ -233,7 +234,19 @@ const Contributions = () => {
               <CardTitle className="text-base flex items-center gap-2">
                 <CalendarDays className="w-4 h-4 text-primary" />Term {term}: {TERM_LABELS[term]}
               </CardTitle>
-              {isCurrentMonth && term === currentTerm && <Badge variant="default" className="text-xs">Current</Badge>}
+              <div className="flex items-center gap-2">
+                {isCurrentMonth && term === currentTerm && <Badge variant="default" className="text-xs">Current</Badge>}
+                {isAdmin && !isViewOnly && adminId && (
+                  <BulkMarkPaid
+                    adminId={adminId}
+                    year={year}
+                    month={month}
+                    term={term}
+                    members={allDisplayMembers.map(m => ({ id: m.id, name: m.name }))}
+                    contributions={contributions}
+                  />
+                )}
+              </div>
             </div>
           </CardHeader>
           <CardContent>
@@ -412,22 +425,18 @@ const Contributions = () => {
         </Card>
       )}
 
-      {isAdmin ? (
-        <Tabs defaultValue="manage">
-          <TabsList>
-            <TabsTrigger value="manage">Manage</TabsTrigger>
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-          </TabsList>
-          <TabsContent value="manage" className="mt-4">
-            <TermCards />
-          </TabsContent>
-          <TabsContent value="overview" className="mt-4">
-            <AdminOverview />
-          </TabsContent>
-        </Tabs>
-      ) : (
-        <TermCards />
-      )}
+      <Tabs defaultValue="manage">
+        <TabsList>
+          <TabsTrigger value="manage">{isAdmin ? 'Manage' : 'My Contributions'}</TabsTrigger>
+          <TabsTrigger value="overview">Everyone's Status</TabsTrigger>
+        </TabsList>
+        <TabsContent value="manage" className="mt-4">
+          <TermCards />
+        </TabsContent>
+        <TabsContent value="overview" className="mt-4">
+          <AdminOverview />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };

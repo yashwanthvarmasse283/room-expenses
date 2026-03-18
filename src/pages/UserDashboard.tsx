@@ -8,6 +8,8 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import FoodToggle from '@/components/FoodToggle';
+import QuickAddExpense from '@/components/QuickAddExpense';
+import PendingDuesWidget from '@/components/PendingDuesWidget';
 
 const COLORS = [
   'hsl(215, 65%, 52%)', 'hsl(145, 55%, 42%)', 'hsl(38, 92%, 50%)',
@@ -63,11 +65,35 @@ const UserDashboard = () => {
     queryKey: ['room_members_user_dash', profile?.admin_id],
     queryFn: async () => {
       if (!profile?.admin_id) return [];
-      const { data } = await supabase.from('profiles').select('id').or(`id.eq.${profile.admin_id},admin_id.eq.${profile.admin_id}`).eq('approved', true);
+      const { data } = await supabase.from('profiles').select('id, user_id, name').or(`id.eq.${profile.admin_id},admin_id.eq.${profile.admin_id}`).eq('approved', true);
       return data ?? [];
     },
     enabled: !!profile?.admin_id,
   });
+
+  const { data: virtualMembers = [] } = useQuery({
+    queryKey: ['virtual_roommates_user_dash', profile?.admin_id],
+    queryFn: async () => {
+      if (!profile?.admin_id) return [];
+      const { data } = await supabase.from('virtual_roommates').select('*').eq('admin_id', profile.admin_id);
+      return data ?? [];
+    },
+    enabled: !!profile?.admin_id,
+  });
+
+  const { data: contributions = [] } = useQuery({
+    queryKey: ['contributions_user_dash', profile?.admin_id],
+    queryFn: async () => {
+      if (!profile?.admin_id) return [];
+      const now = new Date();
+      const { data } = await supabase.from('monthly_contributions').select('*')
+        .eq('admin_id', profile.admin_id).eq('year', now.getFullYear()).eq('month', now.getMonth() + 1);
+      return data ?? [];
+    },
+    enabled: !!profile?.admin_id,
+  });
+
+  const currentTerm = (() => { const d = new Date().getDate(); return d <= 10 ? 1 : d <= 20 ? 2 : 3; })();
 
   const totalRoom = useMemo(() => roomExpenses.reduce((s: number, e: any) => s + Number(e.amount), 0), [roomExpenses]);
 
@@ -159,6 +185,12 @@ const UserDashboard = () => {
           <p className="text-xs text-muted-foreground">Daily limit: ₹{dailyLimit.toLocaleString()}</p>
         </CardContent>
       </Card>
+
+      {/* Quick Add Expense */}
+      <QuickAddExpense />
+
+      {/* Pending Dues */}
+      <PendingDuesWidget members={members} virtualMembers={virtualMembers} contributions={contributions} currentTerm={currentTerm} />
 
       {/* Food Toggle */}
       <FoodToggle adminId={adminId ?? ''} />

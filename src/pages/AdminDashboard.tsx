@@ -4,12 +4,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Receipt, Users, Wallet, MessageSquare, TrendingUp, TrendingDown, Megaphone, UtensilsCrossed, AlertTriangle } from 'lucide-react';
+import { Receipt, Users, Wallet, MessageSquare, TrendingUp, TrendingDown, Megaphone, AlertTriangle } from 'lucide-react';
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import FoodToggle from '@/components/FoodToggle';
+import QuickAddExpense from '@/components/QuickAddExpense';
+import PendingDuesWidget from '@/components/PendingDuesWidget';
+import MonthlyBudgetProgress from '@/components/MonthlyBudgetProgress';
 
 const COLORS = [
   'hsl(215, 65%, 52%)', 'hsl(145, 55%, 42%)', 'hsl(38, 92%, 50%)',
@@ -80,6 +83,43 @@ const AdminDashboard = () => {
     enabled: !!profile,
   });
 
+  const { data: contributions = [] } = useQuery({
+    queryKey: ['contributions_dashboard', profile?.id],
+    queryFn: async () => {
+      if (!profile) return [];
+      const now = new Date();
+      const { data } = await supabase.from('monthly_contributions').select('*')
+        .eq('admin_id', profile.id).eq('year', now.getFullYear()).eq('month', now.getMonth() + 1);
+      return data ?? [];
+    },
+    enabled: !!profile,
+  });
+
+  const { data: virtualMembers = [] } = useQuery({
+    queryKey: ['virtual_roommates_dashboard', profile?.id],
+    queryFn: async () => {
+      if (!profile) return [];
+      const { data } = await supabase.from('virtual_roommates').select('*').eq('admin_id', profile.id);
+      return data ?? [];
+    },
+    enabled: !!profile,
+  });
+
+  const { data: adminSettings } = useQuery({
+    queryKey: ['admin_settings_dashboard', profile?.id],
+    queryFn: async () => {
+      if (!profile) return null;
+      const { data } = await supabase.from('profiles').select('monthly_budget_target, daily_limits_by_day').eq('id', profile.id).single();
+      return data;
+    },
+    enabled: !!profile,
+  });
+
+  const monthlyBudgetTarget = (adminSettings as any)?.monthly_budget_target ?? 0;
+  const dayLimits = (adminSettings as any)?.daily_limits_by_day ?? {};
+
+  const currentTerm = (() => { const d = new Date().getDate(); return d <= 10 ? 1 : d <= 20 ? 2 : 3; })();
+
   const pending = users.filter((u: any) => !u.approved);
   const unread = messages.filter((m: any) => !m.read).length;
 
@@ -100,12 +140,14 @@ const AdminDashboard = () => {
   const lastTotal = lastMonth.reduce((s: number, e: any) => s + Number(e.amount), 0);
   const changePercent = lastTotal ? Math.round(((thisTotal - lastTotal) / lastTotal) * 100) : 0;
 
-  // Daily budget tracking
+  // Daily budget tracking - use per-day limit if set, else default
   const dailyFoodBudget = (profile as any)?.daily_food_budget ?? 120;
+  const todayDayKey = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][now.getDay()];
+  const effectiveDailyBudget = dayLimits[todayDayKey] ? Number(dayLimits[todayDayKey]) : dailyFoodBudget;
   const todayStr = now.toISOString().slice(0, 10);
   const todayExpenses = expenses.filter((e: any) => e.date === todayStr);
   const todayTotal = todayExpenses.reduce((s: number, e: any) => s + Number(e.amount), 0);
-  const budgetPercent = dailyFoodBudget > 0 ? Math.min(100, Math.round((todayTotal / (dailyFoodBudget * (users.length + 1))) * 100)) : 0;
+  const budgetPercent = effectiveDailyBudget > 0 ? Math.min(100, Math.round((todayTotal / (effectiveDailyBudget * (users.length + 1))) * 100)) : 0;
   const budgetExceeded = budgetPercent >= 100;
 
   // Member spending breakdown
@@ -182,13 +224,22 @@ const AdminDashboard = () => {
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">₹{todayTotal.toLocaleString()} spent today</span>
             <span className={`font-medium ${budgetExceeded ? 'text-destructive' : 'text-[hsl(var(--success))]'}`}>
-              {budgetExceeded ? 'Over budget!' : `₹${((dailyFoodBudget * (users.length + 1)) - todayTotal).toLocaleString()} remaining`}
+              {budgetExceeded ? 'Over budget!' : `₹${((effectiveDailyBudget * (users.length + 1)) - todayTotal).toLocaleString()} remaining`}
             </span>
           </div>
           <Progress value={budgetPercent} className={`h-2 ${budgetExceeded ? '[&>div]:bg-destructive' : '[&>div]:bg-[hsl(var(--success))]'}`} />
-          <p className="text-xs text-muted-foreground">Daily limit: ₹{(dailyFoodBudget * (users.length + 1)).toLocaleString()} ({users.length + 1} members × ₹{dailyFoodBudget})</p>
+          <p className="text-xs text-muted-foreground">Daily limit: ₹{(effectiveDailyBudget * (users.length + 1)).toLocaleString()} ({users.length + 1} members × ₹{effectiveDailyBudget}{dayLimits[todayDayKey] ? ` — ${todayDayKey.charAt(0).toUpperCase() + todayDayKey.slice(1)} limit` : ''})</p>
         </CardContent>
       </Card>
+
+      {/* Quick Add Expense */}
+      <QuickAddExpense />
+
+      {/* Monthly Budget Progress */}
+      <MonthlyBudgetProgress monthlyTotal={thisTotal} budgetTarget={monthlyBudgetTarget} />
+
+      {/* Pending Dues */}
+      <PendingDuesWidget members={users} virtualMembers={virtualMembers} contributions={contributions} currentTerm={currentTerm} />
 
       {/* Food Toggle */}
       <FoodToggle adminId={profile?.id ?? ''} />
