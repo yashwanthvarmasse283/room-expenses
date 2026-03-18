@@ -234,8 +234,19 @@ const Contributions = () => {
               <CardTitle className="text-base flex items-center gap-2">
                 <CalendarDays className="w-4 h-4 text-primary" />Term {term}: {TERM_LABELS[term]}
               </CardTitle>
-              {isCurrentMonth && term === currentTerm && <Badge variant="default" className="text-xs">Current</Badge>}
-            </div>
+              <div className="flex items-center gap-2">
+                {isCurrentMonth && term === currentTerm && <Badge variant="default" className="text-xs">Current</Badge>}
+                {isAdmin && !isViewOnly && adminId && (
+                  <BulkMarkPaid
+                    adminId={adminId}
+                    year={year}
+                    month={month}
+                    term={term}
+                    members={allDisplayMembers.map(m => ({ id: m.id, name: m.name }))}
+                    contributions={contributions}
+                  />
+                )}
+              </div>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
