@@ -225,6 +225,7 @@ export type Database = {
           content: string
           created_at: string
           id: string
+          pinned: boolean | null
           title: string
         }
         Insert: {
@@ -232,6 +233,7 @@ export type Database = {
           content: string
           created_at?: string
           id?: string
+          pinned?: boolean | null
           title: string
         }
         Update: {
@@ -239,6 +241,7 @@ export type Database = {
           content?: string
           created_at?: string
           id?: string
+          pinned?: boolean | null
           title?: string
         }
         Relationships: [
@@ -353,10 +356,12 @@ export type Database = {
           avatar_url: string | null
           created_at: string
           daily_food_budget: number
+          daily_limits_by_day: Json | null
           deactivated: boolean
           email: string
           id: string
           mobile_number: string | null
+          monthly_budget_target: number | null
           name: string
           personal_daily_limit: number
           updated_at: string
@@ -371,10 +376,12 @@ export type Database = {
           avatar_url?: string | null
           created_at?: string
           daily_food_budget?: number
+          daily_limits_by_day?: Json | null
           deactivated?: boolean
           email: string
           id?: string
           mobile_number?: string | null
+          monthly_budget_target?: number | null
           name: string
           personal_daily_limit?: number
           updated_at?: string
@@ -389,10 +396,12 @@ export type Database = {
           avatar_url?: string | null
           created_at?: string
           daily_food_budget?: number
+          daily_limits_by_day?: Json | null
           deactivated?: boolean
           email?: string
           id?: string
           mobile_number?: string | null
+          monthly_budget_target?: number | null
           name?: string
           personal_daily_limit?: number
           updated_at?: string
@@ -497,6 +506,7 @@ export type Database = {
           amount: number
           category: string
           created_at: string
+          created_by_name: string | null
           date: string
           description: string | null
           id: string
@@ -510,6 +520,7 @@ export type Database = {
           amount: number
           category: string
           created_at?: string
+          created_by_name?: string | null
           date?: string
           description?: string | null
           id?: string
@@ -523,6 +534,7 @@ export type Database = {
           amount?: number
           category?: string
           created_at?: string
+          created_by_name?: string | null
           date?: string
           description?: string | null
           id?: string
