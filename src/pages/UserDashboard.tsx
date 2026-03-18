@@ -8,6 +8,8 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import FoodToggle from '@/components/FoodToggle';
+import QuickAddExpense from '@/components/QuickAddExpense';
+import PendingDuesWidget from '@/components/PendingDuesWidget';
 
 const COLORS = [
   'hsl(215, 65%, 52%)', 'hsl(145, 55%, 42%)', 'hsl(38, 92%, 50%)',
