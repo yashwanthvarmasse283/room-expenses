@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -6,8 +6,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Plus, Megaphone, Trash2 } from 'lucide-react';
+import { Plus, Megaphone, Trash2, Pin } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -31,6 +32,15 @@ const NoticeBoard = () => {
     },
     enabled: !!adminId,
   });
+
+  // Sort: pinned first, then by date
+  const sortedNotices = useMemo(() => {
+    return [...notices].sort((a: any, b: any) => {
+      if (a.pinned && !b.pinned) return -1;
+      if (!a.pinned && b.pinned) return 1;
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
+  }, [notices]);
 
   useEffect(() => {
     if (!adminId) return;
@@ -60,6 +70,13 @@ const NoticeBoard = () => {
     toast({ title: 'Deleted' });
   };
 
+  const togglePin = async (id: string, currentPinned: boolean) => {
+    if (isViewOnly) return;
+    await supabase.from('notices').update({ pinned: !currentPinned } as any).eq('id', id);
+    queryClient.invalidateQueries({ queryKey: ['notices'] });
+    toast({ title: !currentPinned ? 'Notice Pinned' : 'Notice Unpinned' });
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -79,21 +96,28 @@ const NoticeBoard = () => {
         )}
       </div>
 
-      {notices.length === 0 ? (
+      {sortedNotices.length === 0 ? (
         <Card><CardContent className="py-8 text-center text-muted-foreground">No notices yet.</CardContent></Card>
       ) : (
         <div className="space-y-4">
-          {notices.map((n: any) => (
-            <Card key={n.id}>
+          {sortedNotices.map((n: any) => (
+            <Card key={n.id} className={n.pinned ? 'border-2 border-primary/40 bg-primary/5' : ''}>
               <CardHeader className="flex flex-row items-start justify-between pb-2">
                 <div className="flex items-center gap-2">
+                  {n.pinned && <Pin className="w-4 h-4 text-primary" />}
                   <Megaphone className="w-4 h-4 text-primary" />
                   <CardTitle className="text-base">{n.title}</CardTitle>
+                  {n.pinned && <Badge variant="secondary" className="text-[10px]">Pinned</Badge>}
                 </div>
                 {isAdmin && !isViewOnly && (
-                  <Button variant="ghost" size="icon" onClick={() => remove(n.id)}>
-                    <Trash2 className="w-4 h-4 text-destructive" />
-                  </Button>
+                  <div className="flex gap-1">
+                    <Button variant="ghost" size="icon" onClick={() => togglePin(n.id, n.pinned)}>
+                      <Pin className={`w-4 h-4 ${n.pinned ? 'text-primary' : 'text-muted-foreground'}`} />
+                    </Button>
+                    <Button variant="ghost" size="icon" onClick={() => remove(n.id)}>
+                      <Trash2 className="w-4 h-4 text-destructive" />
+                    </Button>
+                  </div>
                 )}
               </CardHeader>
               <CardContent>
