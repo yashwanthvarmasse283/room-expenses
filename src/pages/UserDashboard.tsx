@@ -186,6 +186,12 @@ const UserDashboard = () => {
         </CardContent>
       </Card>
 
+      {/* Quick Add Expense */}
+      <QuickAddExpense />
+
+      {/* Pending Dues */}
+      <PendingDuesWidget members={members} virtualMembers={virtualMembers} contributions={contributions} currentTerm={currentTerm} />
+
       {/* Food Toggle */}
       <FoodToggle adminId={adminId ?? ''} />
 
