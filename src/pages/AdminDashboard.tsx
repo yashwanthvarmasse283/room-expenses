@@ -224,13 +224,22 @@ const AdminDashboard = () => {
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">₹{todayTotal.toLocaleString()} spent today</span>
             <span className={`font-medium ${budgetExceeded ? 'text-destructive' : 'text-[hsl(var(--success))]'}`}>
-              {budgetExceeded ? 'Over budget!' : `₹${((dailyFoodBudget * (users.length + 1)) - todayTotal).toLocaleString()} remaining`}
+              {budgetExceeded ? 'Over budget!' : `₹${((effectiveDailyBudget * (users.length + 1)) - todayTotal).toLocaleString()} remaining`}
             </span>
           </div>
           <Progress value={budgetPercent} className={`h-2 ${budgetExceeded ? '[&>div]:bg-destructive' : '[&>div]:bg-[hsl(var(--success))]'}`} />
-          <p className="text-xs text-muted-foreground">Daily limit: ₹{(dailyFoodBudget * (users.length + 1)).toLocaleString()} ({users.length + 1} members × ₹{dailyFoodBudget})</p>
+          <p className="text-xs text-muted-foreground">Daily limit: ₹{(effectiveDailyBudget * (users.length + 1)).toLocaleString()} ({users.length + 1} members × ₹{effectiveDailyBudget}{dayLimits[todayDayKey] ? ` — ${todayDayKey.charAt(0).toUpperCase() + todayDayKey.slice(1)} limit` : ''})</p>
         </CardContent>
       </Card>
+
+      {/* Quick Add Expense */}
+      <QuickAddExpense />
+
+      {/* Monthly Budget Progress */}
+      <MonthlyBudgetProgress monthlyTotal={thisTotal} budgetTarget={monthlyBudgetTarget} />
+
+      {/* Pending Dues */}
+      <PendingDuesWidget members={users} virtualMembers={virtualMembers} contributions={contributions} currentTerm={currentTerm} />
 
       {/* Food Toggle */}
       <FoodToggle adminId={profile?.id ?? ''} />
