@@ -247,6 +247,7 @@ const Contributions = () => {
                   />
                 )}
               </div>
+            </div>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
