@@ -412,22 +412,18 @@ const Contributions = () => {
         </Card>
       )}
 
-      {isAdmin ? (
-        <Tabs defaultValue="manage">
-          <TabsList>
-            <TabsTrigger value="manage">Manage</TabsTrigger>
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-          </TabsList>
-          <TabsContent value="manage" className="mt-4">
-            <TermCards />
-          </TabsContent>
-          <TabsContent value="overview" className="mt-4">
-            <AdminOverview />
-          </TabsContent>
-        </Tabs>
-      ) : (
-        <TermCards />
-      )}
+      <Tabs defaultValue="manage">
+        <TabsList>
+          <TabsTrigger value="manage">{isAdmin ? 'Manage' : 'My Contributions'}</TabsTrigger>
+          <TabsTrigger value="overview">Everyone's Status</TabsTrigger>
+        </TabsList>
+        <TabsContent value="manage" className="mt-4">
+          <TermCards />
+        </TabsContent>
+        <TabsContent value="overview" className="mt-4">
+          <AdminOverview />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };

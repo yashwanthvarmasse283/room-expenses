@@ -384,6 +384,12 @@ const AdminControlCenter = () => {
             </CardContent>
           </Card>
 
+          {/* Per-Day Daily Limits */}
+          <DayWiseLimits profileId={profile?.id} />
+
+          {/* Monthly Budget Target */}
+          <MonthlyBudgetTarget profileId={profile?.id} />
+
           {/* Admin Contribution Toggle */}
           <Card>
             <CardHeader><CardTitle className="text-base">Admin Contributions</CardTitle></CardHeader>
