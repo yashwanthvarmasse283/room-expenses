@@ -140,12 +140,14 @@ const AdminDashboard = () => {
   const lastTotal = lastMonth.reduce((s: number, e: any) => s + Number(e.amount), 0);
   const changePercent = lastTotal ? Math.round(((thisTotal - lastTotal) / lastTotal) * 100) : 0;
 
-  // Daily budget tracking
+  // Daily budget tracking - use per-day limit if set, else default
   const dailyFoodBudget = (profile as any)?.daily_food_budget ?? 120;
+  const todayDayKey = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][now.getDay()];
+  const effectiveDailyBudget = dayLimits[todayDayKey] ? Number(dayLimits[todayDayKey]) : dailyFoodBudget;
   const todayStr = now.toISOString().slice(0, 10);
   const todayExpenses = expenses.filter((e: any) => e.date === todayStr);
   const todayTotal = todayExpenses.reduce((s: number, e: any) => s + Number(e.amount), 0);
-  const budgetPercent = dailyFoodBudget > 0 ? Math.min(100, Math.round((todayTotal / (dailyFoodBudget * (users.length + 1))) * 100)) : 0;
+  const budgetPercent = effectiveDailyBudget > 0 ? Math.min(100, Math.round((todayTotal / (effectiveDailyBudget * (users.length + 1))) * 100)) : 0;
   const budgetExceeded = budgetPercent >= 100;
 
   // Member spending breakdown
