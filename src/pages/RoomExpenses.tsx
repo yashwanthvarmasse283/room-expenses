@@ -160,7 +160,7 @@ const RoomExpenses = () => {
     } else {
       const expAdminId = isAdmin ? profile.id : profile.admin_id!;
       const { error } = await supabase.from('room_expenses')
-        .insert({ admin_id: expAdminId, date, category: effectiveCategory, amount: Number(amount), description, paid_by: paidBy || profile.name, split_among: splitAmong });
+        .insert({ admin_id: expAdminId, date, category: effectiveCategory, amount: Number(amount), description, paid_by: paidBy || profile.name, split_among: splitAmong, created_by_name: profile.name });
       if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
       await supabase.from('purse_transactions')
         .insert({ admin_id: expAdminId, type: 'outflow', amount: Number(amount), date, description: `Room: ${description || effectiveCategory}` });
