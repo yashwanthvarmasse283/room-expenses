@@ -83,7 +83,43 @@ const AdminDashboard = () => {
     enabled: !!profile,
   });
 
-  const pending = users.filter((u: any) => !u.approved);
+  const { data: contributions = [] } = useQuery({
+    queryKey: ['contributions_dashboard', profile?.id],
+    queryFn: async () => {
+      if (!profile) return [];
+      const now = new Date();
+      const { data } = await supabase.from('monthly_contributions').select('*')
+        .eq('admin_id', profile.id).eq('year', now.getFullYear()).eq('month', now.getMonth() + 1);
+      return data ?? [];
+    },
+    enabled: !!profile,
+  });
+
+  const { data: virtualMembers = [] } = useQuery({
+    queryKey: ['virtual_roommates_dashboard', profile?.id],
+    queryFn: async () => {
+      if (!profile) return [];
+      const { data } = await supabase.from('virtual_roommates').select('*').eq('admin_id', profile.id);
+      return data ?? [];
+    },
+    enabled: !!profile,
+  });
+
+  const { data: adminSettings } = useQuery({
+    queryKey: ['admin_settings_dashboard', profile?.id],
+    queryFn: async () => {
+      if (!profile) return null;
+      const { data } = await supabase.from('profiles').select('monthly_budget_target, daily_limits_by_day').eq('id', profile.id).single();
+      return data;
+    },
+    enabled: !!profile,
+  });
+
+  const monthlyBudgetTarget = (adminSettings as any)?.monthly_budget_target ?? 0;
+  const dayLimits = (adminSettings as any)?.daily_limits_by_day ?? {};
+
+  const currentTerm = (() => { const d = new Date().getDate(); return d <= 10 ? 1 : d <= 20 ? 2 : 3; })();
+
   const unread = messages.filter((m: any) => !m.read).length;
 
   const totalExpenses = useMemo(() => expenses.reduce((s: number, e: any) => s + Number(e.amount), 0), [expenses]);
