@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import DayWiseLimits from '@/components/DayWiseLimits';
+import MonthlyBudgetTarget from '@/components/MonthlyBudgetTarget';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
