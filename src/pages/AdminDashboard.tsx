@@ -120,6 +120,7 @@ const AdminDashboard = () => {
 
   const currentTerm = (() => { const d = new Date().getDate(); return d <= 10 ? 1 : d <= 20 ? 2 : 3; })();
 
+  const pending = users.filter((u: any) => !u.approved);
   const unread = messages.filter((m: any) => !m.read).length;
 
   const totalExpenses = useMemo(() => expenses.reduce((s: number, e: any) => s + Number(e.amount), 0), [expenses]);
