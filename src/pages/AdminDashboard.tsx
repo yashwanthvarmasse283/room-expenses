@@ -4,12 +4,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Receipt, Users, Wallet, MessageSquare, TrendingUp, TrendingDown, Megaphone, UtensilsCrossed, AlertTriangle } from 'lucide-react';
+import { Receipt, Users, Wallet, MessageSquare, TrendingUp, TrendingDown, Megaphone, AlertTriangle } from 'lucide-react';
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import FoodToggle from '@/components/FoodToggle';
+import QuickAddExpense from '@/components/QuickAddExpense';
+import PendingDuesWidget from '@/components/PendingDuesWidget';
+import MonthlyBudgetProgress from '@/components/MonthlyBudgetProgress';
 
 const COLORS = [
   'hsl(215, 65%, 52%)', 'hsl(145, 55%, 42%)', 'hsl(38, 92%, 50%)',
