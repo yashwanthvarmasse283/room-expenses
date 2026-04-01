@@ -2,10 +2,10 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend, LineChart, Line } from 'recharts';
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { TrendingUp, TrendingDown, Wallet, Receipt, Flame, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { TrendingUp, TrendingDown, Wallet, Receipt, Flame, ArrowUpRight, ArrowDownRight, Users } from 'lucide-react';
 
 const COLORS = [
   'hsl(215, 65%, 52%)', 'hsl(145, 55%, 42%)', 'hsl(38, 92%, 50%)',
@@ -51,7 +51,44 @@ const RoomInsights = () => {
     enabled: !!adminId,
   });
 
+  const { data: members = [] } = useQuery({
+    queryKey: ['insights_members', adminId],
+    queryFn: async () => {
+      if (!adminId) return [];
+      const { data } = await supabase.from('profiles').select('id, user_id, name').or(`id.eq.${adminId},admin_id.eq.${adminId}`).eq('approved', true);
+      return data ?? [];
+    },
+    enabled: !!adminId,
+  });
+
+  const { data: virtualMembers = [] } = useQuery({
+    queryKey: ['insights_virtual', adminId],
+    queryFn: async () => {
+      if (!adminId) return [];
+      const { data } = await supabase.from('virtual_roommates').select('*').eq('admin_id', adminId);
+      return data ?? [];
+    },
+    enabled: !!adminId,
+  });
+
+  const { data: contribLimits = [] } = useQuery({
+    queryKey: ['insights_contrib_limits', adminId],
+    queryFn: async () => {
+      if (!adminId) return [];
+      const { data } = await supabase.from('contribution_limits').select('*').eq('admin_id', adminId);
+      return data ?? [];
+    },
+    enabled: !!adminId,
+  });
+
+  const allMemberNames = useMemo(() => {
+    const real = members.map((m: any) => m.name);
+    const virtual = virtualMembers.map((v: any) => v.name);
+    return [...real, ...virtual];
+  }, [members, virtualMembers]);
+
   const now = new Date();
+
   const thisMonthExp = useMemo(() => roomExpenses.filter((e: any) => {
     const d = new Date(e.date);
     return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
@@ -68,12 +105,12 @@ const RoomInsights = () => {
   const expenseChange = lastMonthTotal > 0 ? Math.round(((thisMonthTotal - lastMonthTotal) / lastMonthTotal) * 100) : 0;
 
   const thisMonthContribs = contributions.filter((c: any) => c.month === now.getMonth() + 1 && c.year === now.getFullYear() && c.paid);
-  const lastMonthContribs = contributions.filter((c: any) => {
-    const lm = new Date(now.getFullYear(), now.getMonth() - 1);
-    return c.month === lm.getMonth() + 1 && c.year === lm.getFullYear() && c.paid;
-  });
-  const thisContribTotal = thisMonthContribs.length * 500;
-  const lastContribTotal = lastMonthContribs.length * 500;
+  const thisMonthContribTotal = useMemo(() => {
+    return thisMonthContribs.reduce((s: number, c: any) => {
+      const limit = contribLimits.find((l: any) => l.user_id === c.user_id && l.term === c.term);
+      return s + (limit ? Number(limit.amount) : 500);
+    }, 0);
+  }, [thisMonthContribs, contribLimits]);
 
   const totalCollection = purse.filter((t: any) => t.type === 'inflow').reduce((s: number, t: any) => s + Number(t.amount), 0);
   const totalSpend = roomExpenses.reduce((s: number, e: any) => s + Number(e.amount), 0);
@@ -90,7 +127,6 @@ const RoomInsights = () => {
       1: { total: 0, categories: {} }, 2: { total: 0, categories: {} }, 3: { total: 0, categories: {} },
     };
     const catMap: Record<string, number> = {};
-
     thisMonthExp.forEach((e: any) => {
       const day = new Date(e.date).getDate();
       const term = getTermForDay(day);
@@ -99,10 +135,8 @@ const RoomInsights = () => {
       termTotals[term].categories[e.category] = (termTotals[term].categories[e.category] || 0) + amt;
       catMap[e.category] = (catMap[e.category] || 0) + amt;
     });
-
     const cats = new Set<string>();
     thisMonthExp.forEach((e: any) => cats.add(e.category));
-
     return {
       termData: [1, 2, 3].map(t => ({ term: TERM_LABELS[t], total: termTotals[t].total, ...termTotals[t].categories })),
       allCategories: Array.from(cats),
@@ -111,9 +145,54 @@ const RoomInsights = () => {
   }, [thisMonthExp]);
 
   const ratio = totalCollection > 0 ? Math.min(100, Math.round((totalSpend / totalCollection) * 100)) : 0;
-
   const thisMonthLabel = now.toLocaleString('default', { month: 'short' });
   const lastMonthLabel = new Date(now.getFullYear(), now.getMonth() - 1).toLocaleString('default', { month: 'short' });
+
+  // This Month's Summary
+  const thisMonthNetBalance = thisMonthContribTotal - thisMonthTotal;
+
+  // Individual Monthly Breakdown (this month)
+  const individualMonthly = useMemo(() => {
+    return allMemberNames.map(name => {
+      const paid = thisMonthExp.filter((e: any) => e.paid_by === name).reduce((s: number, e: any) => s + Number(e.amount), 0);
+      const spent = allMemberNames.length > 0 ? Math.round(thisMonthTotal / allMemberNames.length) : 0;
+      return { name, paid, spent, net: paid - spent };
+    });
+  }, [thisMonthExp, allMemberNames, thisMonthTotal]);
+
+  // Individual All-Time Stats
+  const individualAllTime = useMemo(() => {
+    const totalAll = roomExpenses.reduce((s: number, e: any) => s + Number(e.amount), 0);
+    return allMemberNames.map(name => {
+      const paid = roomExpenses.filter((e: any) => e.paid_by === name).reduce((s: number, e: any) => s + Number(e.amount), 0);
+      const spent = allMemberNames.length > 0 ? Math.round(totalAll / allMemberNames.length) : 0;
+      return { name, paid, spent, net: paid - spent };
+    });
+  }, [roomExpenses, allMemberNames]);
+
+  // Monthly Trend Chart (all months)
+  const monthlyTrend = useMemo(() => {
+    const map: Record<string, number> = {};
+    roomExpenses.forEach((e: any) => {
+      const key = e.date.slice(0, 7);
+      map[key] = (map[key] || 0) + Number(e.amount);
+    });
+    return Object.entries(map).sort().map(([month, total]) => ({ month, total }));
+  }, [roomExpenses]);
+
+  // Contribution Compliance
+  const contribCompliance = useMemo(() => {
+    const monthMap: Record<string, { paid: number; total: number }> = {};
+    const totalMembers = allMemberNames.length;
+    contributions.forEach((c: any) => {
+      const key = `${c.year}-${String(c.month).padStart(2, '0')}`;
+      if (!monthMap[key]) monthMap[key] = { paid: 0, total: totalMembers * 3 };
+      if (c.paid) monthMap[key].paid += 1;
+    });
+    return Object.entries(monthMap).sort().map(([month, d]) => ({
+      month, paid: d.paid, total: d.total, rate: d.total > 0 ? Math.round((d.paid / d.total) * 100) : 0,
+    }));
+  }, [contributions, allMemberNames]);
 
   return (
     <div className="space-y-6">
@@ -151,10 +230,10 @@ const RoomInsights = () => {
         </Card>
       </div>
 
-      {/* Monthly Comparison */}
+      {/* This Month's Summary */}
       <Card>
-        <CardHeader><CardTitle className="text-base">Monthly Comparison: {lastMonthLabel} vs {thisMonthLabel}</CardTitle></CardHeader>
-        <CardContent className="space-y-4">
+        <CardHeader><CardTitle className="text-base">This Month's Summary ({thisMonthLabel})</CardTitle></CardHeader>
+        <CardContent>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="space-y-1">
               <p className="text-sm text-muted-foreground">Total Expenses</p>
@@ -162,27 +241,108 @@ const RoomInsights = () => {
               <div className="flex items-center gap-1 text-xs">
                 {expenseChange >= 0 ? <ArrowUpRight className="w-3 h-3 text-destructive" /> : <ArrowDownRight className="w-3 h-3 text-[hsl(var(--success))]" />}
                 <span className={expenseChange >= 0 ? 'text-destructive' : 'text-[hsl(var(--success))]'}>
-                  {Math.abs(expenseChange)}% {expenseChange >= 0 ? 'increase' : 'decrease'} vs {lastMonthLabel}
+                  {Math.abs(expenseChange)}% vs {lastMonthLabel}
                 </span>
               </div>
             </div>
             <div className="space-y-1">
               <p className="text-sm text-muted-foreground">Total Contributions</p>
-              <p className="text-lg font-bold text-foreground">₹{thisContribTotal.toLocaleString()}</p>
-              <p className="text-xs text-muted-foreground">Last month: ₹{lastContribTotal.toLocaleString()}</p>
+              <p className="text-lg font-bold text-foreground">₹{thisMonthContribTotal.toLocaleString()}</p>
             </div>
             <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">Balance Difference</p>
-              <p className={`text-lg font-bold ${thisMonthTotal > lastMonthTotal ? 'text-destructive' : 'text-[hsl(var(--success))]'}`}>
-                {thisMonthTotal > lastMonthTotal ? '+' : '-'}₹{Math.abs(thisMonthTotal - lastMonthTotal).toLocaleString()}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {expenseChange !== 0
-                  ? `This month expenses ${expenseChange > 0 ? 'increased' : 'decreased'} by ${Math.abs(expenseChange)}% compared to last month.`
-                  : 'No change from last month.'}
+              <p className="text-sm text-muted-foreground">Net Balance</p>
+              <p className={`text-lg font-bold ${thisMonthNetBalance >= 0 ? 'text-[hsl(var(--success))]' : 'text-destructive'}`}>
+                {thisMonthNetBalance >= 0 ? '+' : ''}₹{thisMonthNetBalance.toLocaleString()}
               </p>
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Individual Monthly Breakdown */}
+      <Card>
+        <CardHeader><CardTitle className="text-base flex items-center gap-2"><Users className="w-4 h-4 text-primary" />Individual Monthly Breakdown ({thisMonthLabel})</CardTitle></CardHeader>
+        <CardContent>
+          {individualMonthly.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No members found.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead><tr className="border-b border-border"><th className="text-left py-2 px-3 text-muted-foreground">Member</th><th className="text-right py-2 px-3 text-muted-foreground">Paid</th><th className="text-right py-2 px-3 text-muted-foreground">Spent (Share)</th><th className="text-right py-2 px-3 text-muted-foreground">Net</th></tr></thead>
+                <tbody>
+                  {individualMonthly.map(d => (
+                    <tr key={d.name} className="border-b border-border/50">
+                      <td className="py-2 px-3 text-foreground font-medium">{d.name}</td>
+                      <td className="py-2 px-3 text-right text-foreground">₹{d.paid.toLocaleString()}</td>
+                      <td className="py-2 px-3 text-right text-foreground">₹{d.spent.toLocaleString()}</td>
+                      <td className={`py-2 px-3 text-right font-bold ${d.net >= 0 ? 'text-[hsl(var(--success))]' : 'text-destructive'}`}>
+                        {d.net >= 0 ? '+' : ''}₹{d.net.toLocaleString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* All-Time Totals + Individual All-Time */}
+      <Card>
+        <CardHeader><CardTitle className="text-base">All-Time Individual Stats</CardTitle></CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-3 gap-4 mb-4">
+            <div className="text-center p-3 rounded-lg bg-muted/50">
+              <p className="text-xs text-muted-foreground">Total Expenses</p>
+              <p className="text-lg font-bold text-foreground">₹{totalSpend.toLocaleString()}</p>
+            </div>
+            <div className="text-center p-3 rounded-lg bg-muted/50">
+              <p className="text-xs text-muted-foreground">Total Contributions</p>
+              <p className="text-lg font-bold text-foreground">₹{totalCollection.toLocaleString()}</p>
+            </div>
+            <div className="text-center p-3 rounded-lg bg-muted/50">
+              <p className="text-xs text-muted-foreground">Overall Balance</p>
+              <p className={`text-lg font-bold ${purseBalance >= 0 ? 'text-[hsl(var(--success))]' : 'text-destructive'}`}>₹{purseBalance.toLocaleString()}</p>
+            </div>
+          </div>
+          {individualAllTime.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead><tr className="border-b border-border"><th className="text-left py-2 px-3 text-muted-foreground">Member</th><th className="text-right py-2 px-3 text-muted-foreground">Total Paid</th><th className="text-right py-2 px-3 text-muted-foreground">Total Spent</th><th className="text-right py-2 px-3 text-muted-foreground">Net</th></tr></thead>
+                <tbody>
+                  {individualAllTime.map(d => (
+                    <tr key={d.name} className="border-b border-border/50">
+                      <td className="py-2 px-3 text-foreground font-medium">{d.name}</td>
+                      <td className="py-2 px-3 text-right text-foreground">₹{d.paid.toLocaleString()}</td>
+                      <td className="py-2 px-3 text-right text-foreground">₹{d.spent.toLocaleString()}</td>
+                      <td className={`py-2 px-3 text-right font-bold ${d.net >= 0 ? 'text-[hsl(var(--success))]' : 'text-destructive'}`}>
+                        {d.net >= 0 ? '+' : ''}₹{d.net.toLocaleString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Monthly Trend Chart */}
+      <Card>
+        <CardHeader><CardTitle className="text-base">Monthly Expense Trend</CardTitle></CardHeader>
+        <CardContent>
+          {monthlyTrend.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No data yet.</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={250}>
+              <LineChart data={monthlyTrend}>
+                <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 12 }} />
+                <Tooltip />
+                <Line type="monotone" dataKey="total" stroke="hsl(215, 65%, 52%)" strokeWidth={2} dot={{ r: 4 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
         </CardContent>
       </Card>
 
@@ -198,10 +358,10 @@ const RoomInsights = () => {
         </CardContent>
       </Card>
 
-      {/* Category Breakdown */}
+      {/* Category & Term Breakdown */}
       <div className="grid lg:grid-cols-2 gap-4">
         <Card>
-          <CardHeader><CardTitle className="text-base">Category Spending (This Month)</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-base">Top Expense Categories (This Month)</CardTitle></CardHeader>
           <CardContent>
             {categoryData.length === 0 ? (
               <p className="text-sm text-muted-foreground">No expenses this month.</p>
@@ -250,6 +410,42 @@ const RoomInsights = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Contribution Compliance */}
+      <Card>
+        <CardHeader><CardTitle className="text-base">Contribution Compliance (Monthly)</CardTitle></CardHeader>
+        <CardContent>
+          {contribCompliance.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No contribution data yet.</p>
+          ) : (
+            <div className="space-y-4">
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={contribCompliance}>
+                  <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 12 }} domain={[0, 100]} />
+                  <Tooltip formatter={(value: any) => `${value}%`} />
+                  <Bar dataKey="rate" fill="hsl(215, 65%, 52%)" radius={[4, 4, 0, 0]} name="Compliance %" />
+                </BarChart>
+              </ResponsiveContainer>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead><tr className="border-b border-border"><th className="text-left py-2 px-3 text-muted-foreground">Month</th><th className="text-right py-2 px-3 text-muted-foreground">Paid</th><th className="text-right py-2 px-3 text-muted-foreground">Total Slots</th><th className="text-right py-2 px-3 text-muted-foreground">Rate</th></tr></thead>
+                  <tbody>
+                    {contribCompliance.map(d => (
+                      <tr key={d.month} className="border-b border-border/50">
+                        <td className="py-2 px-3 text-foreground">{d.month}</td>
+                        <td className="py-2 px-3 text-right text-foreground">{d.paid}</td>
+                        <td className="py-2 px-3 text-right text-foreground">{d.total}</td>
+                        <td className={`py-2 px-3 text-right font-bold ${d.rate >= 80 ? 'text-[hsl(var(--success))]' : d.rate >= 50 ? 'text-[hsl(var(--warning))]' : 'text-destructive'}`}>{d.rate}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Term Totals */}
       <div className="grid grid-cols-3 gap-3">
