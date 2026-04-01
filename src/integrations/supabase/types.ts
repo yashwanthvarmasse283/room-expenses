@@ -87,6 +87,27 @@ export type Database = {
           },
         ]
       }
+      expense_grocery_items: {
+        Row: {
+          created_at: string
+          expense_id: string
+          grocery_id: string
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          expense_id: string
+          grocery_id: string
+          id?: string
+        }
+        Update: {
+          created_at?: string
+          expense_id?: string
+          grocery_id?: string
+          id?: string
+        }
+        Relationships: []
+      }
       food_toggle: {
         Row: {
           admin_id: string
@@ -124,6 +145,27 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      groceries: {
+        Row: {
+          admin_id: string
+          created_at: string
+          id: string
+          name: string
+        }
+        Insert: {
+          admin_id: string
+          created_at?: string
+          id?: string
+          name: string
+        }
+        Update: {
+          admin_id?: string
+          created_at?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
       }
       messages: {
         Row: {

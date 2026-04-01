@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Plus, Pencil, Trash2, Search, Users, Download } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, Download } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -31,7 +31,9 @@ const RoomExpenses = () => {
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [paidBy, setPaidBy] = useState('');
-  const [selectedSplitMembers, setSelectedSplitMembers] = useState<string[]>([]);
+  const [paidByManual, setPaidByManual] = useState('');
+  const [selectedGroceryItems, setSelectedGroceryItems] = useState<string[]>([]);
+  const [newGroceryItem, setNewGroceryItem] = useState('');
 
   const adminId = isAdmin ? profile?.id : profile?.admin_id;
 
@@ -65,6 +67,16 @@ const RoomExpenses = () => {
     enabled: !!adminId,
   });
 
+  const { data: groceries = [], refetch: refetchGroceries } = useQuery({
+    queryKey: ['groceries', adminId],
+    queryFn: async () => {
+      if (!adminId) return [];
+      const { data } = await supabase.from('groceries').select('*').eq('admin_id', adminId).order('name');
+      return data ?? [];
+    },
+    enabled: !!adminId,
+  });
+
   const allMembers = useMemo(() => {
     const real = members.map((m: any) => ({ id: m.user_id || m.id, name: m.name, type: 'real' }));
     const virtual = virtualMembers.map((v: any) => ({ id: v.id, name: v.name, type: 'virtual' }));
@@ -83,7 +95,6 @@ const RoomExpenses = () => {
 
   const dailyFoodBudget = (budgetData as any)?.daily_food_budget ?? 120;
 
-  // Get unique categories from existing expenses + defaults
   const allCategories = useMemo(() => {
     const cats = new Set(defaultCategories);
     expenses.forEach((e: any) => { if (e.category) cats.add(e.category); });
@@ -120,11 +131,30 @@ const RoomExpenses = () => {
   }, [adminId, queryClient]);
 
   const resetForm = () => {
-    setDate(''); setCategory('Food'); setCustomCategory(''); setAmount(''); setDescription(''); setPaidBy('');
-    setEditingId(null); setSelectedSplitMembers([]);
+    setDate(''); setCategory('Food'); setCustomCategory(''); setAmount(''); setDescription(''); setPaidBy(''); setPaidByManual('');
+    setEditingId(null); setSelectedGroceryItems([]); setNewGroceryItem('');
   };
 
   const getEffectiveCategory = () => category === '_custom' ? customCategory.trim() : category;
+  const getEffectivePaidBy = () => paidBy === '_manual' ? paidByManual.trim() : (paidBy || profile?.name || '');
+
+  const addGroceryItem = async () => {
+    if (!newGroceryItem.trim() || !adminId) return;
+    const effAdminId = isAdmin ? profile!.id : profile!.admin_id!;
+    const { data, error } = await supabase.from('groceries').insert({ admin_id: effAdminId, name: newGroceryItem.trim() }).select().single();
+    if (!error && data) {
+      refetchGroceries();
+      setSelectedGroceryItems(prev => [...prev, data.id]);
+      setNewGroceryItem('');
+      toast({ title: 'Grocery item added' });
+    }
+  };
+
+  const removeGroceryItem = async (id: string) => {
+    await supabase.from('groceries').delete().eq('id', id);
+    refetchGroceries();
+    setSelectedGroceryItems(prev => prev.filter(g => g !== id));
+  };
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -135,6 +165,8 @@ const RoomExpenses = () => {
       toast({ title: 'Please enter a category name', variant: 'destructive' });
       return;
     }
+
+    const effectivePaidBy = getEffectivePaidBy();
 
     if (!editingId) {
       const existingDailyTotal = dailyTotals[date] || 0;
@@ -149,19 +181,32 @@ const RoomExpenses = () => {
       }
     }
 
-    const splitAmong = selectedSplitMembers.length > 0 ? selectedSplitMembers : null;
-
     if (editingId) {
       const { error } = await supabase.from('room_expenses')
-        .update({ date, category: effectiveCategory, amount: Number(amount), description, paid_by: paidBy, split_among: splitAmong })
+        .update({ date, category: effectiveCategory, amount: Number(amount), description, paid_by: effectivePaidBy })
         .eq('id', editingId);
       if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
+      // Update grocery items for edited expense
+      await supabase.from('expense_grocery_items').delete().eq('expense_id', editingId);
+      if (selectedGroceryItems.length > 0) {
+        await supabase.from('expense_grocery_items').insert(
+          selectedGroceryItems.map(gid => ({ expense_id: editingId, grocery_id: gid }))
+        );
+      }
       toast({ title: 'Updated' });
     } else {
       const expAdminId = isAdmin ? profile.id : profile.admin_id!;
-      const { error } = await supabase.from('room_expenses')
-        .insert({ admin_id: expAdminId, date, category: effectiveCategory, amount: Number(amount), description, paid_by: paidBy || profile.name, split_among: splitAmong, created_by_name: profile.name });
+      const { data: inserted, error } = await supabase.from('room_expenses')
+        .insert({ admin_id: expAdminId, date, category: effectiveCategory, amount: Number(amount), description, paid_by: effectivePaidBy, created_by_name: profile.name })
+        .select('id')
+        .single();
       if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
+      // Save grocery items
+      if (inserted && selectedGroceryItems.length > 0) {
+        await supabase.from('expense_grocery_items').insert(
+          selectedGroceryItems.map(gid => ({ expense_id: inserted.id, grocery_id: gid }))
+        );
+      }
       await supabase.from('purse_transactions')
         .insert({ admin_id: expAdminId, type: 'outflow', amount: Number(amount), date, description: `Room: ${description || effectiveCategory}` });
       toast({ title: 'Added' });
@@ -183,7 +228,6 @@ const RoomExpenses = () => {
   const startEdit = (exp: any) => {
     if (isViewOnly) return;
     setEditingId(exp.id); setDate(exp.date);
-    // Check if category is a default or custom
     if (defaultCategories.includes(exp.category)) {
       setCategory(exp.category);
       setCustomCategory('');
@@ -191,21 +235,19 @@ const RoomExpenses = () => {
       setCategory('_custom');
       setCustomCategory(exp.category);
     }
-    setAmount(String(exp.amount)); setDescription(exp.description || ''); setPaidBy(exp.paid_by || '');
-    setSelectedSplitMembers(exp.split_among || []);
+    setAmount(String(exp.amount)); setDescription(exp.description || '');
+    // Check if paid_by matches a member name
+    const memberMatch = allMembers.find(m => m.name === exp.paid_by);
+    if (memberMatch) {
+      setPaidBy(exp.paid_by);
+      setPaidByManual('');
+    } else {
+      setPaidBy('_manual');
+      setPaidByManual(exp.paid_by || '');
+    }
+    setSelectedGroceryItems([]);
     setOpen(true);
   };
-
-  const toggleSplitMember = (name: string) => {
-    setSelectedSplitMembers(prev =>
-      prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name]
-    );
-  };
-
-  const perPersonShare = useMemo(() => {
-    if (!amount || selectedSplitMembers.length === 0) return 0;
-    return Math.round((Number(amount) / selectedSplitMembers.length) * 100) / 100;
-  }, [amount, selectedSplitMembers]);
 
   const filtered = expenses.filter((e: any) => {
     const matchSearch = !search || (e.description || '').toLowerCase().includes(search.toLowerCase()) || e.category.toLowerCase().includes(search.toLowerCase());
@@ -234,10 +276,9 @@ const RoomExpenses = () => {
   };
 
   const exportCsv = () => {
-    const headers = ['Date', 'Category', 'Amount', 'Description', 'Paid By', 'Split Among'];
+    const headers = ['Date', 'Category', 'Amount', 'Description', 'Paid By'];
     const rows = filtered.map((e: any) => [
-      e.date, e.category, e.amount, e.description || '', e.paid_by || '',
-      e.split_among ? e.split_among.join('; ') : ''
+      e.date, e.category, e.amount, e.description || '', e.paid_by || ''
     ]);
     const csv = [headers, ...rows].map(r => r.map((c: any) => `"${c}"`).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -280,42 +321,54 @@ const RoomExpenses = () => {
                         </SelectContent>
                       </Select>
                       {category === '_custom' && (
-                        <Input
-                          placeholder="Enter custom category"
-                          value={customCategory}
-                          onChange={e => setCustomCategory(e.target.value)}
-                          className="mt-2"
-                          required
-                        />
+                        <Input placeholder="Enter custom category" value={customCategory} onChange={e => setCustomCategory(e.target.value)} className="mt-2" required />
                       )}
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-2"><Label>Amount (₹)</Label><Input type="number" value={amount} onChange={e => setAmount(e.target.value)} required /></div>
-                    <div className="space-y-2"><Label>Paid By</Label><Input value={paidBy} onChange={e => setPaidBy(e.target.value)} /></div>
+                    <div className="space-y-2">
+                      <Label>Paid By</Label>
+                      <Select value={paidBy} onValueChange={v => { setPaidBy(v); if (v !== '_manual') setPaidByManual(''); }}>
+                        <SelectTrigger><SelectValue placeholder="Select member" /></SelectTrigger>
+                        <SelectContent>
+                          {allMembers.map(m => (
+                            <SelectItem key={m.id} value={m.name}>{m.name}{m.type === 'virtual' ? ' (V)' : ''}</SelectItem>
+                          ))}
+                          <SelectItem value="_manual">✏️ Enter manually...</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {paidBy === '_manual' && (
+                        <Input placeholder="Enter name" value={paidByManual} onChange={e => setPaidByManual(e.target.value)} className="mt-2" />
+                      )}
+                    </div>
                   </div>
                   <div className="space-y-2"><Label>Description</Label><Textarea value={description} onChange={e => setDescription(e.target.value)} /></div>
 
-                  {/* Split Among */}
+                  {/* Grocery Items */}
                   <div className="space-y-2">
-                    <Label className="flex items-center gap-2"><Users className="w-4 h-4" />Split Among</Label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {allMembers.map(m => (
-                        <label key={m.id} className="flex items-center gap-2 text-sm p-2 rounded-lg bg-muted/50 cursor-pointer hover:bg-muted">
+                    <Label>Items Purchased (Grocery)</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {groceries.map((g: any) => (
+                        <label key={g.id} className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-full border cursor-pointer transition-colors ${selectedGroceryItems.includes(g.id) ? 'bg-primary text-primary-foreground border-primary' : 'bg-muted/50 text-foreground border-border hover:bg-muted'}`}>
                           <Checkbox
-                            checked={selectedSplitMembers.includes(m.name)}
-                            onCheckedChange={() => toggleSplitMember(m.name)}
+                            checked={selectedGroceryItems.includes(g.id)}
+                            onCheckedChange={(checked) => {
+                              setSelectedGroceryItems(prev => checked ? [...prev, g.id] : prev.filter(x => x !== g.id));
+                            }}
+                            className="hidden"
                           />
-                          <span className="text-foreground">{m.name}</span>
-                          {m.type === 'virtual' && <span className="text-[10px] text-muted-foreground">(Virtual)</span>}
+                          {g.name}
+                          {isAdmin && (
+                            <button type="button" onClick={(ev) => { ev.preventDefault(); removeGroceryItem(g.id); }} className="ml-1 text-muted-foreground hover:text-destructive">×</button>
+                          )}
                         </label>
                       ))}
                     </div>
-                    {selectedSplitMembers.length > 0 && amount && (
-                      <p className="text-xs text-muted-foreground">
-                        Each person pays: <span className="font-bold text-foreground">₹{perPersonShare.toLocaleString()}</span> ({selectedSplitMembers.length} people)
-                      </p>
-                    )}
+                    <div className="flex gap-2">
+                      <Input placeholder="Add missing item..." value={newGroceryItem} onChange={e => setNewGroceryItem(e.target.value)} className="h-8 text-sm" onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addGroceryItem(); } }} />
+                      <Button type="button" size="sm" variant="outline" onClick={addGroceryItem} className="h-8">Add</Button>
+                    </div>
                   </div>
 
                   <Button className="w-full" type="submit">{editingId ? 'Update' : 'Add'} Expense</Button>
@@ -359,17 +412,12 @@ const RoomExpenses = () => {
                   <CardContent className="flex items-center justify-between p-3">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                         <span className="font-medium text-foreground text-sm">{e.description || e.category}</span>
+                        <span className="font-medium text-foreground text-sm">{e.description || e.category}</span>
                         <span className="text-xs px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground">{e.category}</span>
                       </div>
                       {e.paid_by && <p className="text-xs text-muted-foreground mt-0.5">Paid by {e.paid_by}</p>}
                       {(e as any).created_by_name && (e as any).created_by_name !== e.paid_by && (
                         <p className="text-[10px] text-muted-foreground">Added by {(e as any).created_by_name}</p>
-                      )}
-                      {e.split_among && e.split_among.length > 0 && (
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          Split: {e.split_among.join(', ')} · ₹{(Number(e.amount) / e.split_among.length).toFixed(0)} each
-                        </p>
                       )}
                     </div>
                     <div className="flex items-center gap-3">

@@ -38,7 +38,7 @@ const QuickAddExpense = () => {
       description: description || category,
       paid_by: profile.name,
       created_by_name: profile.name,
-    });
+    } as any);
     if (!error) {
       await supabase.from('purse_transactions').insert({
         admin_id: adminId,
