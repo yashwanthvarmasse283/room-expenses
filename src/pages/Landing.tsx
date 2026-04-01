@@ -14,7 +14,7 @@ const Landing = () => (
   <div className="min-h-screen bg-background">
     <header className="border-b border-border bg-card/80 backdrop-blur-sm sticky top-0 z-30">
       <div className="container mx-auto flex items-center justify-between py-4 px-4">
-        <h1 className="text-xl font-bold font-['Space_Grotesk'] text-foreground">RoomExpense</h1>
+        <h1 className="text-xl font-bold font-['Space_Grotesk'] text-foreground">View-Expenses</h1>
         <div className="flex gap-2">
           <Button variant="ghost" asChild><Link to="/login">Login</Link></Button>
           <Button asChild><Link to="/signup">Get Started</Link></Button>

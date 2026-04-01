@@ -8,23 +8,41 @@ import { ThemeProvider } from "@/contexts/ThemeContext";
 import { AppLayout } from "@/components/layout/AppLayout";
 import Landing from "./pages/Landing";
 import Auth from "./pages/Auth";
+import ForgotPassword from "./pages/ForgotPassword";
 import Dashboard from "./pages/Dashboard";
 import RoomExpenses from "./pages/RoomExpenses";
-import PersonalExpenses from "./pages/PersonalExpenses";
+import PersonalWallet from "./pages/PersonalWallet";
 import Purse from "./pages/Purse";
-import ManageUsers from "./pages/ManageUsers";
+import AdminControlCenter from "./pages/AdminControlCenter";
 import Messages from "./pages/Messages";
-import Analytics from "./pages/Analytics";
-import SettingsPage from "./pages/SettingsPage";
+import RoomChat from "./pages/RoomChat";
+import NoticeBoard from "./pages/NoticeBoard";
+import RoomInsights from "./pages/RoomInsights";
+import AccountSettings from "./pages/AccountSettings";
 import NotFound from "./pages/NotFound";
-import { Loader2 } from "lucide-react";
+import Contributions from "./pages/Contributions";
+import RecurringBills from "./pages/RecurringBills";
+import { Loader2, ShieldAlert } from "lucide-react";
 
 const queryClient = new QueryClient();
+
+const DeactivatedPage = () => (
+  <div className="min-h-screen flex items-center justify-center bg-background p-4 text-center">
+    <div className="max-w-md space-y-4">
+      <ShieldAlert className="w-16 h-16 text-destructive mx-auto" />
+      <h2 className="text-xl font-bold text-foreground">Account Restricted</h2>
+      <p className="text-muted-foreground">You are currently restricted from accessing this room. Please contact the room admin.</p>
+    </div>
+  </div>
+);
 
 const ProtectedRoute = ({ children, adminOnly }: { children: React.ReactNode; adminOnly?: boolean }) => {
   const { user, role, loading, profile } = useAuth();
   if (loading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
   if (!user) return <Navigate to="/login" replace />;
+  
+  if (profile?.deactivated) return <DeactivatedPage />;
+  
   if (role === 'user' && !profile?.approved) return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4 text-center">
       <div>
@@ -49,15 +67,26 @@ const AppRoutes = () => (
     <Route path="/" element={<PublicRoute><Landing /></PublicRoute>} />
     <Route path="/login" element={<PublicRoute><Auth /></PublicRoute>} />
     <Route path="/signup" element={<PublicRoute><Auth /></PublicRoute>} />
+    <Route path="/forgot-password" element={<ForgotPassword />} />
     <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
       <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/room-expenses" element={<RoomExpenses />} />
-      <Route path="/personal-expenses" element={<PersonalExpenses />} />
-      <Route path="/purse" element={<ProtectedRoute adminOnly><Purse /></ProtectedRoute>} />
-      <Route path="/manage-users" element={<ProtectedRoute adminOnly><ManageUsers /></ProtectedRoute>} />
+      <Route path="/personal-wallet" element={<PersonalWallet />} />
+      <Route path="/purse" element={<Purse />} />
+      <Route path="/admin-control" element={<ProtectedRoute adminOnly><AdminControlCenter /></ProtectedRoute>} />
       <Route path="/messages" element={<Messages />} />
-      <Route path="/analytics" element={<Analytics />} />
-      <Route path="/settings" element={<SettingsPage />} />
+      <Route path="/room-chat" element={<RoomChat />} />
+      <Route path="/notice-board" element={<NoticeBoard />} />
+      <Route path="/contributions" element={<Contributions />} />
+      <Route path="/recurring-bills" element={<RecurringBills />} />
+      <Route path="/room-insights" element={<RoomInsights />} />
+      <Route path="/account-settings" element={<AccountSettings />} />
+      {/* Redirects for old routes */}
+      <Route path="/settings" element={<Navigate to="/account-settings" replace />} />
+      <Route path="/profile-settings" element={<Navigate to="/account-settings" replace />} />
+      <Route path="/analytics" element={<Navigate to="/room-insights" replace />} />
+      <Route path="/personal-expenses" element={<Navigate to="/personal-wallet" replace />} />
+      <Route path="/settlements" element={<Navigate to="/dashboard" replace />} />
     </Route>
     <Route path="*" element={<NotFound />} />
   </Routes>

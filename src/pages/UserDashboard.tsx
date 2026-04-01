@@ -1,13 +1,25 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Receipt, PiggyBank, Target, TrendingUp,Wallet } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
+import { Receipt, TrendingUp, Wallet, Megaphone, AlertTriangle } from 'lucide-react';
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import FoodToggle from '@/components/FoodToggle';
+import QuickAddExpense from '@/components/QuickAddExpense';
+import PendingDuesWidget from '@/components/PendingDuesWidget';
 
+const COLORS = [
+  'hsl(215, 65%, 52%)', 'hsl(145, 55%, 42%)', 'hsl(38, 92%, 50%)',
+  'hsl(0, 65%, 55%)', 'hsl(270, 50%, 55%)', 'hsl(180, 50%, 42%)',
+];
 
 const UserDashboard = () => {
   const { user, profile } = useAuth();
+  const navigate = useNavigate();
+  const adminId = profile?.admin_id ?? profile?.id;
 
   const { data: roomExpenses = [] } = useQuery({
     queryKey: ['room_expenses_user', profile?.admin_id],
@@ -19,57 +31,119 @@ const UserDashboard = () => {
     enabled: !!profile?.admin_id,
   });
 
-  const { data: personal = [] } = useQuery({
-    queryKey: ['personal_expenses', user?.id],
+  const { data: purse = [] } = useQuery({
+    queryKey: ['purse_transactions_user', profile?.admin_id],
     queryFn: async () => {
-      if (!user) return [];
-      const { data } = await supabase.from('personal_expenses').select('*').eq('user_id', user.id).order('created_at', { ascending: false });
+      if (!profile?.admin_id) return [];
+      const { data } = await supabase.from('purse_transactions').select('*').eq('admin_id', profile.admin_id);
       return data ?? [];
     },
-    enabled: !!user,
+    enabled: !!profile?.admin_id,
   });
-  const { data: purse = [] } = useQuery({
-  queryKey: ['purse_transactions_user', profile?.admin_id],
-  queryFn: async () => {
-    if (!profile?.admin_id) return [];
-    const { data } = await supabase
-      .from('purse_transactions')
-      .select('*')
-      .eq('admin_id', profile.admin_id);
-    return data ?? [];
-  },
-  enabled: !!profile?.admin_id,
-});
 
+  const { data: notices = [] } = useQuery({
+    queryKey: ['notices_dashboard', adminId],
+    queryFn: async () => {
+      if (!adminId) return [];
+      const { data } = await supabase.from('notices').select('*').eq('admin_id', adminId).order('created_at', { ascending: false }).limit(3);
+      return data ?? [];
+    },
+    enabled: !!adminId,
+  });
+
+  const { data: adminProfile } = useQuery({
+    queryKey: ['admin_budget_user', profile?.admin_id],
+    queryFn: async () => {
+      if (!profile?.admin_id) return null;
+      const { data } = await supabase.from('profiles').select('daily_food_budget').eq('id', profile.admin_id).single();
+      return data;
+    },
+    enabled: !!profile?.admin_id,
+  });
+
+  const { data: members = [] } = useQuery({
+    queryKey: ['room_members_user_dash', profile?.admin_id],
+    queryFn: async () => {
+      if (!profile?.admin_id) return [];
+      const { data } = await supabase.from('profiles').select('id, user_id, name').or(`id.eq.${profile.admin_id},admin_id.eq.${profile.admin_id}`).eq('approved', true);
+      return data ?? [];
+    },
+    enabled: !!profile?.admin_id,
+  });
+
+  const { data: virtualMembers = [] } = useQuery({
+    queryKey: ['virtual_roommates_user_dash', profile?.admin_id],
+    queryFn: async () => {
+      if (!profile?.admin_id) return [];
+      const { data } = await supabase.from('virtual_roommates').select('*').eq('admin_id', profile.admin_id);
+      return data ?? [];
+    },
+    enabled: !!profile?.admin_id,
+  });
+
+  const { data: contributions = [] } = useQuery({
+    queryKey: ['contributions_user_dash', profile?.admin_id],
+    queryFn: async () => {
+      if (!profile?.admin_id) return [];
+      const now = new Date();
+      const { data } = await supabase.from('monthly_contributions').select('*')
+        .eq('admin_id', profile.admin_id).eq('year', now.getFullYear()).eq('month', now.getMonth() + 1);
+      return data ?? [];
+    },
+    enabled: !!profile?.admin_id,
+  });
+
+  const currentTerm = (() => { const d = new Date().getDate(); return d <= 10 ? 1 : d <= 20 ? 2 : 3; })();
 
   const totalRoom = useMemo(() => roomExpenses.reduce((s: number, e: any) => s + Number(e.amount), 0), [roomExpenses]);
-  const totalPersonal = useMemo(() => personal.reduce((s: number, e: any) => s + Number(e.amount), 0), [personal]);
 
   const now = new Date();
-  const thisMonthPersonal = personal.filter((e: any) => {
+  const thisMonthRoom = roomExpenses.filter((e: any) => {
     const d = new Date(e.date);
     return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
   });
-  const thisTotal = thisMonthPersonal.reduce((s: number, e: any) => s + Number(e.amount), 0);
+  const lastMonthRoom = roomExpenses.filter((e: any) => {
+    const d = new Date(e.date);
+    const lm = new Date(now.getFullYear(), now.getMonth() - 1);
+    return d.getMonth() === lm.getMonth() && d.getFullYear() === lm.getFullYear();
+  });
+  const thisTotal = thisMonthRoom.reduce((s: number, e: any) => s + Number(e.amount), 0);
+  const lastTotal = lastMonthRoom.reduce((s: number, e: any) => s + Number(e.amount), 0);
+
   const purseBalance = useMemo(
-  () =>
-    purse.reduce(
-      (s: number, t: any) =>
-        s + (t.type === 'inflow' ? Number(t.amount) : -Number(t.amount)),
-      0
-    ),
-  [purse]
-);
+    () => purse.reduce((s: number, t: any) => s + (t.type === 'inflow' ? Number(t.amount) : -Number(t.amount)), 0),
+    [purse]
+  );
+
+  // Daily budget
+  const dailyFoodBudget = (adminProfile as any)?.daily_food_budget ?? 120;
+  const todayStr = now.toISOString().slice(0, 10);
+  const todayTotal = roomExpenses.filter((e: any) => e.date === todayStr).reduce((s: number, e: any) => s + Number(e.amount), 0);
+  const memberCount = members.length || 1;
+  const dailyLimit = dailyFoodBudget * memberCount;
+  const budgetPercent = dailyLimit > 0 ? Math.min(100, Math.round((todayTotal / dailyLimit) * 100)) : 0;
+  const budgetExceeded = budgetPercent >= 100;
+
+  const categoryData = useMemo(() => {
+    const map: Record<string, number> = {};
+    thisMonthRoom.forEach((e: any) => { map[e.category] = (map[e.category] || 0) + Number(e.amount); });
+    return Object.entries(map).map(([name, value]) => ({ name, value }));
+  }, [thisMonthRoom]);
+
+  const comparisonData = useMemo(() => {
+    const thisLabel = now.toLocaleString('default', { month: 'short' });
+    const lastLabel = new Date(now.getFullYear(), now.getMonth() - 1).toLocaleString('default', { month: 'short' });
+    return [
+      { month: lastLabel, total: lastTotal },
+      { month: thisLabel, total: thisTotal },
+    ];
+  }, [thisTotal, lastTotal, now]);
 
   const stats = [
     { label: 'Room Expenses', value: `₹${totalRoom.toLocaleString()}`, icon: Receipt, color: 'text-primary' },
-    { label: 'Personal Total', value: `₹${totalPersonal.toLocaleString()}`, icon: PiggyBank, color: 'text-[hsl(var(--success))]' },
     { label: 'This Month', value: `₹${thisTotal.toLocaleString()}`, icon: TrendingUp, color: 'text-[hsl(var(--warning))]' },
     { label: 'Purse Balance', value: `₹${purseBalance.toLocaleString()}`, icon: Wallet, color: 'text-[hsl(var(--success))]' },
   ];
-
-  
-
 
   return (
     <div className="space-y-6">
@@ -78,7 +152,7 @@ const UserDashboard = () => {
         <p className="text-sm text-muted-foreground">Your expense overview</p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {stats.map(s => (
           <Card key={s.label}>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -92,14 +166,113 @@ const UserDashboard = () => {
         ))}
       </div>
 
+      {/* Daily Budget Progress */}
+      <Card className={budgetExceeded ? 'border-destructive/50 bg-destructive/5' : ''}>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-2">
+            {budgetExceeded && <AlertTriangle className="w-4 h-4 text-destructive" />}
+            Today's Spending
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">₹{todayTotal.toLocaleString()} spent today</span>
+            <span className={`font-medium ${budgetExceeded ? 'text-destructive' : 'text-[hsl(var(--success))]'}`}>
+              {budgetExceeded ? 'Over budget!' : `₹${(dailyLimit - todayTotal).toLocaleString()} remaining`}
+            </span>
+          </div>
+          <Progress value={budgetPercent} className={`h-2 ${budgetExceeded ? '[&>div]:bg-destructive' : '[&>div]:bg-[hsl(var(--success))]'}`} />
+          <p className="text-xs text-muted-foreground">Daily limit: ₹{dailyLimit.toLocaleString()}</p>
+        </CardContent>
+      </Card>
+
+      {/* Quick Add Expense */}
+      <QuickAddExpense />
+
+      {/* Pending Dues */}
+      <PendingDuesWidget members={members} virtualMembers={virtualMembers} contributions={contributions} currentTerm={currentTerm} />
+
+      {/* Food Toggle */}
+      <FoodToggle adminId={adminId ?? ''} />
+
+      {notices.length > 0 && (
+        <Card className="border-2 border-primary/40 bg-primary/5 shadow-md">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <div className="flex items-center gap-2">
+              <Megaphone className="w-5 h-5 text-primary" />
+              <CardTitle className="text-base">📢 Notice Board</CardTitle>
+            </div>
+            <button onClick={() => navigate('/notice-board')} className="text-xs text-primary hover:underline">View All</button>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {notices.map((n: any) => (
+              <div key={n.id} className="border-l-4 border-primary pl-3">
+                <p className="font-semibold text-sm text-foreground">{n.title}</p>
+                <p className="text-xs text-muted-foreground line-clamp-2">{n.content}</p>
+                <p className="text-[10px] text-muted-foreground mt-1">{new Date(n.created_at).toLocaleString()}</p>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="grid lg:grid-cols-2 gap-4">
+        <Card>
+          <CardHeader><CardTitle className="text-base">This Month vs Last Month</CardTitle></CardHeader>
+          <CardContent>
+            {comparisonData.every(d => d.total === 0) ? (
+              <p className="text-sm text-muted-foreground">No data yet.</p>
+            ) : (
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={comparisonData}>
+                  <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                  <YAxis tick={{ fontSize: 12 }} />
+                  <Tooltip />
+                  <Bar dataKey="total" fill="hsl(215, 65%, 52%)" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader><CardTitle className="text-base">Category Breakdown (This Month)</CardTitle></CardHeader>
+          <CardContent>
+            {categoryData.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No expenses this month.</p>
+            ) : (
+              <div className="flex items-center gap-4">
+                <ResponsiveContainer width="55%" height={200}>
+                  <PieChart>
+                    <Pie data={categoryData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} innerRadius={35}>
+                      {categoryData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="space-y-2">
+                  {categoryData.map((d, i) => (
+                    <div key={d.name} className="flex items-center gap-2 text-xs">
+                      <span className="w-3 h-3 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
+                      <span className="text-foreground">{d.name}</span>
+                      <span className="text-muted-foreground">₹{d.value.toLocaleString()}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
       <Card>
-        <CardHeader><CardTitle className="text-base">Recent Personal Expenses</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-base">Recent Expenses</CardTitle></CardHeader>
         <CardContent>
-          {personal.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No personal expenses yet. Start tracking in Personal Expenses.</p>
+          {roomExpenses.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No expenses yet.</p>
           ) : (
             <div className="space-y-3">
-              {personal.slice(0, 5).map((e: any) => (
+              {roomExpenses.slice(0, 5).map((e: any) => (
                 <div key={e.id} className="flex items-center justify-between text-sm">
                   <div>
                     <p className="font-medium text-foreground">{e.description || e.category}</p>

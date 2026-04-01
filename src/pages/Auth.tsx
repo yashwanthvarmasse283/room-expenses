@@ -27,6 +27,7 @@ const Auth = () => {
   const [email, setEmail] = useState('');
   const [pass, setPass] = useState('');
   const [adminId, setAdminId] = useState('');
+  const [mobileNumber, setMobileNumber] = useState('');
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,11 +43,11 @@ const Auth = () => {
     setSubmitting(true);
     let err: string | null;
     if (role === 'admin') {
-      err = await signupAdmin(name, email, pass);
+      err = await signupAdmin(name, email, pass, mobileNumber);
       setSubmitting(false);
       if (!err) { navigate('/dashboard'); return; }
     } else {
-      err = await signupUser(name, email, pass, adminId);
+      err = await signupUser(name, email, pass, adminId, mobileNumber);
       setSubmitting(false);
       if (!err) {
         toast({ title: 'Request Sent', description: 'Wait for admin approval before logging in.' });
@@ -73,6 +74,7 @@ const Auth = () => {
               <Button className="w-full" type="submit" disabled={submitting}>
                 {submitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}Sign In
               </Button>
+              <p className="text-center text-sm text-muted-foreground"><Link to="/forgot-password" className="text-primary font-medium">Forgot Password?</Link></p>
               <p className="text-center text-sm text-muted-foreground">Don't have an account? <Link to="/signup" className="text-primary font-medium">Sign Up</Link></p>
             </form>
           ) : (
@@ -87,6 +89,7 @@ const Auth = () => {
                 <div className="space-y-2"><Label>Name</Label><Input value={name} onChange={e => setName(e.target.value)} required /></div>
                 <div className="space-y-2"><Label>Email</Label><Input type="email" value={email} onChange={e => setEmail(e.target.value)} required /></div>
                 <div className="space-y-2"><Label>Password</Label><Input type="password" value={pass} onChange={e => setPass(e.target.value)} required minLength={6} /></div>
+                <div className="space-y-2"><Label>Mobile Number</Label><Input placeholder="+919876543210" value={mobileNumber} onChange={e => setMobileNumber(e.target.value)} required /></div>
                 {role === 'user' && (
                   <div className="space-y-2"><Label>Admin ID</Label><Input placeholder="Enter admin's unique ID" value={adminId} onChange={e => setAdminId(e.target.value)} required /></div>
                 )}
@@ -94,6 +97,7 @@ const Auth = () => {
                   {submitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                   {role === 'admin' ? 'Create Admin Account' : 'Request Access'}
                 </Button>
+                <p className="text-center text-sm text-muted-foreground"><Link to="/forgot-password" className="text-primary font-medium">Forgot Password?</Link></p>
                 <p className="text-center text-sm text-muted-foreground">Already have an account? <Link to="/login" className="text-primary font-medium">Sign In</Link></p>
               </form>
             </div>

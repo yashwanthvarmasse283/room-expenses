@@ -14,6 +14,159 @@ export type Database = {
   }
   public: {
     Tables: {
+      chat_messages: {
+        Row: {
+          admin_id: string
+          content: string
+          created_at: string
+          id: string
+          sender_id: string
+          sender_name: string
+        }
+        Insert: {
+          admin_id: string
+          content: string
+          created_at?: string
+          id?: string
+          sender_id: string
+          sender_name: string
+        }
+        Update: {
+          admin_id?: string
+          content?: string
+          created_at?: string
+          id?: string
+          sender_id?: string
+          sender_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_messages_admin_id_fkey"
+            columns: ["admin_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contribution_limits: {
+        Row: {
+          admin_id: string
+          amount: number
+          created_at: string
+          id: string
+          term: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          admin_id: string
+          amount?: number
+          created_at?: string
+          id?: string
+          term: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          admin_id?: string
+          amount?: number
+          created_at?: string
+          id?: string
+          term?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contribution_limits_admin_id_fkey"
+            columns: ["admin_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      expense_grocery_items: {
+        Row: {
+          created_at: string
+          expense_id: string
+          grocery_id: string
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          expense_id: string
+          grocery_id: string
+          id?: string
+        }
+        Update: {
+          created_at?: string
+          expense_id?: string
+          grocery_id?: string
+          id?: string
+        }
+        Relationships: []
+      }
+      food_toggle: {
+        Row: {
+          admin_id: string
+          date: string
+          eating_home: boolean
+          id: string
+          updated_at: string
+          user_id: string
+          user_name: string
+        }
+        Insert: {
+          admin_id: string
+          date?: string
+          eating_home?: boolean
+          id?: string
+          updated_at?: string
+          user_id: string
+          user_name: string
+        }
+        Update: {
+          admin_id?: string
+          date?: string
+          eating_home?: boolean
+          id?: string
+          updated_at?: string
+          user_id?: string
+          user_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "food_toggle_admin_id_fkey"
+            columns: ["admin_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      groceries: {
+        Row: {
+          admin_id: string
+          created_at: string
+          id: string
+          name: string
+        }
+        Insert: {
+          admin_id: string
+          created_at?: string
+          id?: string
+          name: string
+        }
+        Update: {
+          admin_id?: string
+          created_at?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
       messages: {
         Row: {
           content: string
@@ -49,6 +202,94 @@ export type Database = {
           {
             foreignKeyName: "messages_to_admin_id_fkey"
             columns: ["to_admin_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      monthly_contributions: {
+        Row: {
+          admin_id: string
+          created_at: string
+          id: string
+          marked_by: string | null
+          month: number
+          paid: boolean
+          paid_at: string | null
+          term: number
+          updated_at: string
+          user_id: string
+          user_name: string
+          year: number
+        }
+        Insert: {
+          admin_id: string
+          created_at?: string
+          id?: string
+          marked_by?: string | null
+          month: number
+          paid?: boolean
+          paid_at?: string | null
+          term: number
+          updated_at?: string
+          user_id: string
+          user_name: string
+          year: number
+        }
+        Update: {
+          admin_id?: string
+          created_at?: string
+          id?: string
+          marked_by?: string | null
+          month?: number
+          paid?: boolean
+          paid_at?: string | null
+          term?: number
+          updated_at?: string
+          user_id?: string
+          user_name?: string
+          year?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "monthly_contributions_admin_id_fkey"
+            columns: ["admin_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notices: {
+        Row: {
+          admin_id: string
+          content: string
+          created_at: string
+          id: string
+          pinned: boolean | null
+          title: string
+        }
+        Insert: {
+          admin_id: string
+          content: string
+          created_at?: string
+          id?: string
+          pinned?: boolean | null
+          title: string
+        }
+        Update: {
+          admin_id?: string
+          content?: string
+          created_at?: string
+          id?: string
+          pinned?: boolean | null
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notices_admin_id_fkey"
+            columns: ["admin_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -115,42 +356,99 @@ export type Database = {
         }
         Relationships: []
       }
+      personal_wallet: {
+        Row: {
+          amount: number
+          category: string
+          created_at: string
+          date: string
+          description: string | null
+          id: string
+          type: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          category?: string
+          created_at?: string
+          date?: string
+          description?: string | null
+          id?: string
+          type: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          category?: string
+          created_at?: string
+          date?: string
+          description?: string | null
+          id?: string
+          type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           admin_code: string | null
+          admin_contributions_enabled: boolean
           admin_id: string | null
           approved: boolean
           avatar_url: string | null
           created_at: string
+          daily_food_budget: number
+          daily_limits_by_day: Json | null
+          deactivated: boolean
           email: string
           id: string
+          mobile_number: string | null
+          monthly_budget_target: number | null
           name: string
+          personal_daily_limit: number
           updated_at: string
           user_id: string
+          view_only: boolean
         }
         Insert: {
           admin_code?: string | null
+          admin_contributions_enabled?: boolean
           admin_id?: string | null
           approved?: boolean
           avatar_url?: string | null
           created_at?: string
+          daily_food_budget?: number
+          daily_limits_by_day?: Json | null
+          deactivated?: boolean
           email: string
           id?: string
+          mobile_number?: string | null
+          monthly_budget_target?: number | null
           name: string
+          personal_daily_limit?: number
           updated_at?: string
           user_id: string
+          view_only?: boolean
         }
         Update: {
           admin_code?: string | null
+          admin_contributions_enabled?: boolean
           admin_id?: string | null
           approved?: boolean
           avatar_url?: string | null
           created_at?: string
+          daily_food_budget?: number
+          daily_limits_by_day?: Json | null
+          deactivated?: boolean
           email?: string
           id?: string
+          mobile_number?: string | null
+          monthly_budget_target?: number | null
           name?: string
+          personal_daily_limit?: number
           updated_at?: string
           user_id?: string
+          view_only?: boolean
         }
         Relationships: [
           {
@@ -200,12 +498,57 @@ export type Database = {
           },
         ]
       }
+      recurring_bills: {
+        Row: {
+          active: boolean
+          admin_id: string
+          amount: number
+          category: string
+          created_at: string
+          due_day: number
+          id: string
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          admin_id: string
+          amount: number
+          category?: string
+          created_at?: string
+          due_day: number
+          id?: string
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          admin_id?: string
+          amount?: number
+          category?: string
+          created_at?: string
+          due_day?: number
+          id?: string
+          name?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recurring_bills_admin_id_fkey"
+            columns: ["admin_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       room_expenses: {
         Row: {
           admin_id: string
           amount: number
           category: string
           created_at: string
+          created_by_name: string | null
           date: string
           description: string | null
           id: string
@@ -219,6 +562,7 @@ export type Database = {
           amount: number
           category: string
           created_at?: string
+          created_by_name?: string | null
           date?: string
           description?: string | null
           id?: string
@@ -232,6 +576,7 @@ export type Database = {
           amount?: number
           category?: string
           created_at?: string
+          created_by_name?: string | null
           date?: string
           description?: string | null
           id?: string
@@ -243,6 +588,47 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "room_expenses_admin_id_fkey"
+            columns: ["admin_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      settlements: {
+        Row: {
+          admin_id: string
+          amount: number
+          created_at: string
+          from_user: string
+          id: string
+          settled: boolean
+          settled_at: string | null
+          to_user: string
+        }
+        Insert: {
+          admin_id: string
+          amount: number
+          created_at?: string
+          from_user: string
+          id?: string
+          settled?: boolean
+          settled_at?: string | null
+          to_user: string
+        }
+        Update: {
+          admin_id?: string
+          amount?: number
+          created_at?: string
+          from_user?: string
+          id?: string
+          settled?: boolean
+          settled_at?: string | null
+          to_user?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "settlements_admin_id_fkey"
             columns: ["admin_id"]
             isOneToOne: false
             referencedRelation: "profiles"
@@ -270,6 +656,35 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      virtual_roommates: {
+        Row: {
+          admin_id: string
+          created_at: string
+          id: string
+          name: string
+        }
+        Insert: {
+          admin_id: string
+          created_at?: string
+          id?: string
+          name: string
+        }
+        Update: {
+          admin_id?: string
+          created_at?: string
+          id?: string
+          name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "virtual_roommates_admin_id_fkey"
+            columns: ["admin_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
