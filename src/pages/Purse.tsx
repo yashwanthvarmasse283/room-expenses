@@ -96,9 +96,7 @@ const Purse = () => {
       toast({ title: 'Enter amount', variant: 'destructive' });
       return;
     }
-    triggerUpiPayment(Number(upiAmount));
-    setPendingUpi(true);
-    setTimeout(() => setShowFallback(true), 3000);
+    setUpiSelectorOpen(true);
   };
 
   const confirmUpiPayment = async () => {
