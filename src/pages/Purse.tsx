@@ -27,7 +27,7 @@ const Purse = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [pendingUpi, setPendingUpi] = useState(false);
   const [upiAmount, setUpiAmount] = useState('');
-  const [showFallback, setShowFallback] = useState(false);
+  const [upiSelectorOpen, setUpiSelectorOpen] = useState(false);
 
   const adminId = isAdmin ? profile?.id : profile?.admin_id;
 
