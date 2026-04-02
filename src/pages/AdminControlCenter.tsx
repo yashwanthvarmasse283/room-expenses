@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import DayWiseLimits from '@/components/DayWiseLimits';
+import GroceryManager from '@/components/GroceryManager';
 import MonthlyBudgetTarget from '@/components/MonthlyBudgetTarget';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -182,6 +183,7 @@ const AdminControlCenter = () => {
         <TabsList>
           <TabsTrigger value="members">Members</TabsTrigger>
           <TabsTrigger value="virtual">Virtual Members</TabsTrigger>
+          <TabsTrigger value="groceries">Groceries</TabsTrigger>
           <TabsTrigger value="settings">Settings</TabsTrigger>
         </TabsList>
 
@@ -366,6 +368,10 @@ const AdminControlCenter = () => {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="groceries" className="mt-4 space-y-4">
+          <GroceryManager />
         </TabsContent>
 
         <TabsContent value="settings" className="mt-4 space-y-4">

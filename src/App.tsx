@@ -9,6 +9,7 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import Landing from "./pages/Landing";
 import Auth from "./pages/Auth";
 import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
 import Dashboard from "./pages/Dashboard";
 import RoomExpenses from "./pages/RoomExpenses";
 import PersonalWallet from "./pages/PersonalWallet";
@@ -68,6 +69,7 @@ const AppRoutes = () => (
     <Route path="/login" element={<PublicRoute><Auth /></PublicRoute>} />
     <Route path="/signup" element={<PublicRoute><Auth /></PublicRoute>} />
     <Route path="/forgot-password" element={<ForgotPassword />} />
+    <Route path="/reset-password" element={<ResetPassword />} />
     <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
       <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/room-expenses" element={<RoomExpenses />} />

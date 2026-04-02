@@ -10,8 +10,8 @@ import BulkMarkPaid from '@/components/BulkMarkPaid';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { getUpiVpa, getUpiQrValue, triggerUpiPayment } from '@/lib/upiHelper';
-import { QRCodeSVG } from 'qrcode.react';
+import { getUpiVpa } from '@/lib/upiHelper';
+import UpiPaymentSelector from '@/components/UpiPaymentSelector';
 
 const TERM_LABELS: Record<number, string> = { 1: '1st – 10th', 2: '11th – 20th', 3: '21st – 30th' };
 
@@ -36,6 +36,7 @@ const Contributions = () => {
   const currentTerm = getCurrentTerm();
   const [pendingPayment, setPendingPayment] = useState<{ memberId: string; memberName: string; term: number } | null>(null);
   const [showFallback, setShowFallback] = useState(false);
+  const [upiSelectorOpen, setUpiSelectorOpen] = useState(false);
   // Track in-flight mutations to prevent double clicks
   const processingRef = useRef<Set<string>>(new Set());
 
@@ -159,9 +160,8 @@ const Contributions = () => {
   };
 
   const handlePayNow = (memberId: string, memberName: string, term: number) => {
-    triggerUpiPayment();
     setPendingPayment({ memberId, memberName, term });
-    setTimeout(() => setShowFallback(true), 3000);
+    setUpiSelectorOpen(true);
   };
 
   const confirmPayment = useMutation({
@@ -382,32 +382,18 @@ const Contributions = () => {
       </div>
 
       {pendingPayment && (
-        <Card className="border-primary/50 bg-primary/5">
-          <CardContent className="py-4 space-y-3">
-            <div className="flex items-center justify-between flex-wrap gap-3">
-              <div>
-                <p className="font-medium text-foreground">Payment initiated for Term {pendingPayment.term}</p>
-                <p className="text-sm text-muted-foreground">Completed your UPI payment? Confirm below.</p>
-              </div>
-              <Button onClick={() => confirmPayment.mutate()} disabled={confirmPayment.isPending}>
-                <CheckCircle2 className="w-4 h-4 mr-1" />{confirmPayment.isPending ? 'Processing...' : 'Confirm Payment'}
-              </Button>
-            </div>
-            {showFallback && (
-              <div className="border-t border-border pt-3 space-y-3">
-                <p className="text-sm text-muted-foreground">UPI app didn't open? Use these alternatives:</p>
-                <div className="flex items-center gap-4 flex-wrap">
-                  <Button variant="outline" size="sm" onClick={copyVpa}>
-                    <Copy className="w-3 h-3 mr-1" />Copy VPA: {getUpiVpa()}
-                  </Button>
-                  <div className="bg-background p-2 rounded-lg border">
-                    <QRCodeSVG value={getUpiQrValue()} size={120} />
-                  </div>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <UpiPaymentSelector
+          open={upiSelectorOpen}
+          onOpenChange={setUpiSelectorOpen}
+          amount={getLimit(pendingPayment.memberId, pendingPayment.term)}
+          onPaymentConfirmed={() => {
+            confirmPayment.mutate();
+          }}
+          onCancel={() => {
+            setPendingPayment(null);
+            setShowFallback(false);
+          }}
+        />
       )}
 
       {showHistory && (
