@@ -169,33 +169,20 @@ const Purse = () => {
             </Button>
           </div>
           {!isViewOnly && (
-            pendingUpi ? (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between flex-wrap gap-3">
-                  <p className="text-sm text-muted-foreground">Completed UPI payment of ₹{upiAmount}?</p>
-                  <div className="flex gap-2">
-                    <Button size="sm" onClick={confirmUpiPayment}>Confirm Payment</Button>
-                    <Button size="sm" variant="ghost" onClick={() => { setPendingUpi(false); setUpiAmount(''); setShowFallback(false); }}>Cancel</Button>
-                  </div>
-                </div>
-                {showFallback && (
-                  <div className="border-t border-border pt-3 space-y-3">
-                    <p className="text-sm text-muted-foreground">UPI app didn't open? Scan the QR code:</p>
-                    <div className="bg-background p-2 rounded-lg border inline-block">
-                      <QRCodeSVG value={getUpiQrValue(Number(upiAmount))} size={120} />
-                    </div>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="flex items-center gap-3 flex-wrap">
-                <Input type="number" placeholder="Amount" className="w-32" value={upiAmount} onChange={e => setUpiAmount(e.target.value)} />
-                <Button size="sm" onClick={handlePayNow}>
-                  <CreditCard className="w-3 h-3 mr-1" />Pay Now
-                </Button>
-              </div>
-            )
+            <div className="flex items-center gap-3 flex-wrap">
+              <Input type="number" placeholder="Amount" className="w-32" value={upiAmount} onChange={e => setUpiAmount(e.target.value)} />
+              <Button size="sm" onClick={handlePayNow}>
+                <CreditCard className="w-3 h-3 mr-1" />Pay Now
+              </Button>
+            </div>
           )}
+          <UpiPaymentSelector
+            open={upiSelectorOpen}
+            onOpenChange={setUpiSelectorOpen}
+            amount={upiAmount ? Number(upiAmount) : undefined}
+            onPaymentConfirmed={confirmUpiPayment}
+            onCancel={() => setUpiAmount('')}
+          />
         </CardContent>
       </Card>
 
