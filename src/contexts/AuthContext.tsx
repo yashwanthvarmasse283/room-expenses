@@ -152,13 +152,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const signupUser = useCallback(async (name: string, email: string, password: string, adminCode: string, mobileNumber: string): Promise<string | null> => {
+    const normalizedCode = adminCode.trim().toUpperCase();
     const { data: adminProfile, error: adminError } = await supabase
       .from('profiles')
       .select('id')
-      .eq('admin_code', adminCode.toUpperCase())
+      .eq('admin_code', normalizedCode)
       .maybeSingle();
     
-    if (adminError || !adminProfile) return 'Invalid Admin ID';
+    if (adminError || !adminProfile) return 'Invalid Admin ID. Please check the code and try again.';
 
     const redirectUrl = `${window.location.origin}/`;
     const { data, error } = await supabase.auth.signUp({
