@@ -10,8 +10,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Plus, ArrowUpRight, ArrowDownLeft, Wallet, Pencil, Trash2, CreditCard, Copy } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { triggerUpiPayment, getUpiVpa, getUpiQrValue } from '@/lib/upiHelper';
-import { QRCodeSVG } from 'qrcode.react';
+import { getUpiVpa } from '@/lib/upiHelper';
+import UpiPaymentSelector from '@/components/UpiPaymentSelector';
 
 const Purse = () => {
   const { profile, role, isViewOnly } = useAuth();
