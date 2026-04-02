@@ -25,7 +25,6 @@ const Purse = () => {
   const [date, setDate] = useState('');
   const [description, setDescription] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [pendingUpi, setPendingUpi] = useState(false);
   const [upiAmount, setUpiAmount] = useState('');
   const [upiSelectorOpen, setUpiSelectorOpen] = useState(false);
 
