@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import DayWiseLimits from '@/components/DayWiseLimits';
+import GroceryManager from '@/components/GroceryManager';
 import MonthlyBudgetTarget from '@/components/MonthlyBudgetTarget';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
