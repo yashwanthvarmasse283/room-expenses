@@ -183,6 +183,7 @@ const AdminControlCenter = () => {
         <TabsList>
           <TabsTrigger value="members">Members</TabsTrigger>
           <TabsTrigger value="virtual">Virtual Members</TabsTrigger>
+          <TabsTrigger value="groceries">Groceries</TabsTrigger>
           <TabsTrigger value="settings">Settings</TabsTrigger>
         </TabsList>
 
