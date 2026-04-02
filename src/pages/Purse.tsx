@@ -109,9 +109,7 @@ const Purse = () => {
     if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
     queryClient.invalidateQueries({ queryKey: ['purse_transactions'] });
     toast({ title: 'Payment confirmed!', description: `₹${upiAmount} added to purse` });
-    setPendingUpi(false);
     setUpiAmount('');
-    setShowFallback(false);
   };
 
   const copyVpa = () => {
