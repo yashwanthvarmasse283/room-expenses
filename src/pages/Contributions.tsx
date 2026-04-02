@@ -10,7 +10,8 @@ import BulkMarkPaid from '@/components/BulkMarkPaid';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { getUpiVpa, getUpiQrValue, triggerUpiPayment } from '@/lib/upiHelper';
+import { getUpiVpa, getUpiQrValue } from '@/lib/upiHelper';
+import UpiPaymentSelector from '@/components/UpiPaymentSelector';
 import { QRCodeSVG } from 'qrcode.react';
 
 const TERM_LABELS: Record<number, string> = { 1: '1st – 10th', 2: '11th – 20th', 3: '21st – 30th' };
