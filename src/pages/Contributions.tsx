@@ -161,9 +161,8 @@ const Contributions = () => {
   };
 
   const handlePayNow = (memberId: string, memberName: string, term: number) => {
-    triggerUpiPayment();
     setPendingPayment({ memberId, memberName, term });
-    setTimeout(() => setShowFallback(true), 3000);
+    setUpiSelectorOpen(true);
   };
 
   const confirmPayment = useMutation({
