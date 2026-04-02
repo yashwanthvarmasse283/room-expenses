@@ -383,32 +383,18 @@ const Contributions = () => {
       </div>
 
       {pendingPayment && (
-        <Card className="border-primary/50 bg-primary/5">
-          <CardContent className="py-4 space-y-3">
-            <div className="flex items-center justify-between flex-wrap gap-3">
-              <div>
-                <p className="font-medium text-foreground">Payment initiated for Term {pendingPayment.term}</p>
-                <p className="text-sm text-muted-foreground">Completed your UPI payment? Confirm below.</p>
-              </div>
-              <Button onClick={() => confirmPayment.mutate()} disabled={confirmPayment.isPending}>
-                <CheckCircle2 className="w-4 h-4 mr-1" />{confirmPayment.isPending ? 'Processing...' : 'Confirm Payment'}
-              </Button>
-            </div>
-            {showFallback && (
-              <div className="border-t border-border pt-3 space-y-3">
-                <p className="text-sm text-muted-foreground">UPI app didn't open? Use these alternatives:</p>
-                <div className="flex items-center gap-4 flex-wrap">
-                  <Button variant="outline" size="sm" onClick={copyVpa}>
-                    <Copy className="w-3 h-3 mr-1" />Copy VPA: {getUpiVpa()}
-                  </Button>
-                  <div className="bg-background p-2 rounded-lg border">
-                    <QRCodeSVG value={getUpiQrValue()} size={120} />
-                  </div>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <UpiPaymentSelector
+          open={upiSelectorOpen}
+          onOpenChange={setUpiSelectorOpen}
+          amount={getLimit(pendingPayment.memberId, pendingPayment.term)}
+          onPaymentConfirmed={() => {
+            confirmPayment.mutate();
+          }}
+          onCancel={() => {
+            setPendingPayment(null);
+            setShowFallback(false);
+          }}
+        />
       )}
 
       {showHistory && (
