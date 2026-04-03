@@ -93,18 +93,27 @@ export type Database = {
           expense_id: string
           grocery_id: string
           id: string
+          item_name: string
+          quantity: number
+          unit_price: number
         }
         Insert: {
           created_at?: string
           expense_id: string
           grocery_id: string
           id?: string
+          item_name?: string
+          quantity?: number
+          unit_price?: number
         }
         Update: {
           created_at?: string
           expense_id?: string
           grocery_id?: string
           id?: string
+          item_name?: string
+          quantity?: number
+          unit_price?: number
         }
         Relationships: []
       }
