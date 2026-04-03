@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus, ArrowUpRight, ArrowDownLeft, Wallet, Pencil, Trash2, CreditCard, Copy } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -27,6 +28,8 @@ const Purse = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [upiAmount, setUpiAmount] = useState('');
   const [upiSelectorOpen, setUpiSelectorOpen] = useState(false);
+  const [paidBy, setPaidBy] = useState('');
+  const [paidByManual, setPaidByManual] = useState('');
 
   const adminId = isAdmin ? profile?.id : profile?.admin_id;
 
@@ -35,6 +38,16 @@ const Purse = () => {
     queryFn: async () => {
       if (!adminId) return [];
       const { data } = await supabase.from('purse_transactions').select('*').eq('admin_id', adminId).order('created_at', { ascending: false });
+      return data ?? [];
+    },
+    enabled: !!adminId,
+  });
+
+  const { data: members = [] } = useQuery({
+    queryKey: ['room_members_purse', adminId],
+    queryFn: async () => {
+      if (!adminId) return [];
+      const { data } = await supabase.from('profiles').select('id, user_id, name').or(`id.eq.${adminId},admin_id.eq.${adminId}`).eq('approved', true);
       return data ?? [];
     },
     enabled: !!adminId,
@@ -55,18 +68,23 @@ const Purse = () => {
   const totalIn = transactions.filter((t: any) => t.type === 'inflow').reduce((s: number, t: any) => s + Number(t.amount), 0);
   const totalOut = transactions.filter((t: any) => t.type === 'outflow').reduce((s: number, t: any) => s + Number(t.amount), 0);
 
-  const resetForm = () => { setAmount(''); setDate(''); setDescription(''); setEditingId(null); setTxType('inflow'); };
+  const resetForm = () => { setAmount(''); setDate(''); setDescription(''); setEditingId(null); setTxType('inflow'); setPaidBy(''); setPaidByManual(''); };
+
+  const getEffectivePaidBy = () => paidBy === '_manual' ? paidByManual.trim() : (paidBy || profile?.name || '');
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!adminId || isViewOnly) return;
 
+    const memberName = getEffectivePaidBy();
+    const desc = description || (txType === 'inflow' ? `${memberName} - Added money` : `${memberName} - Expense`);
+
     if (editingId) {
-      const { error } = await supabase.from('purse_transactions').update({ amount: Number(amount), date, description, type: txType }).eq('id', editingId);
+      const { error } = await supabase.from('purse_transactions').update({ amount: Number(amount), date, description: desc, type: txType }).eq('id', editingId);
       if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
       toast({ title: 'Updated' });
     } else {
-      const { error } = await supabase.from('purse_transactions').insert({ admin_id: adminId, type: txType, amount: Number(amount), date, description });
+      const { error } = await supabase.from('purse_transactions').insert({ admin_id: adminId, type: txType, amount: Number(amount), date, description: desc });
       if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
       toast({ title: txType === 'inflow' ? 'Money Added' : 'Expense Added', description: `₹${amount}` });
     }
@@ -142,6 +160,21 @@ const Purse = () => {
                 <DialogHeader><DialogTitle>{editingId ? 'Edit' : txType === 'inflow' ? 'Add Money' : 'Add Expense'}</DialogTitle></DialogHeader>
                 <form onSubmit={save} className="space-y-4">
                   <div className="space-y-2"><Label>Amount (₹)</Label><Input type="number" value={amount} onChange={e => setAmount(e.target.value)} required /></div>
+                  <div className="space-y-2">
+                    <Label>Paid By</Label>
+                    <Select value={paidBy} onValueChange={v => { setPaidBy(v); if (v !== '_manual') setPaidByManual(''); }}>
+                      <SelectTrigger><SelectValue placeholder="Select member" /></SelectTrigger>
+                      <SelectContent>
+                        {members.map((m: any) => (
+                          <SelectItem key={m.user_id || m.id} value={m.name}>{m.name}</SelectItem>
+                        ))}
+                        <SelectItem value="_manual">✏️ Enter manually...</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {paidBy === '_manual' && (
+                      <Input placeholder="Enter name" value={paidByManual} onChange={e => setPaidByManual(e.target.value)} className="mt-2" />
+                    )}
+                  </div>
                   <div className="space-y-2"><Label>Date</Label><Input type="date" value={date} onChange={e => setDate(e.target.value)} required /></div>
                   <div className="space-y-2"><Label>Description</Label><Textarea value={description} onChange={e => setDescription(e.target.value)} /></div>
                   <Button className="w-full" type="submit">{editingId ? 'Update' : 'Save'}</Button>
