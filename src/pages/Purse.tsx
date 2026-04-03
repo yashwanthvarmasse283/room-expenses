@@ -28,6 +28,8 @@ const Purse = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [upiAmount, setUpiAmount] = useState('');
   const [upiSelectorOpen, setUpiSelectorOpen] = useState(false);
+  const [paidBy, setPaidBy] = useState('');
+  const [paidByManual, setPaidByManual] = useState('');
 
   const adminId = isAdmin ? profile?.id : profile?.admin_id;
 
