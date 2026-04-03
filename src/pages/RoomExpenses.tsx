@@ -8,12 +8,19 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Plus, Pencil, Trash2, Search, Download } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Plus, Pencil, Trash2, Search, Download, ShoppingCart, ChevronDown, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 const defaultCategories = ['Food', 'Water', 'Rent', 'Electricity', 'Internet', 'Misc'];
+
+interface CartItem {
+  groceryId: string;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+}
 
 const RoomExpenses = () => {
   const { user, role, profile, isViewOnly } = useAuth();
@@ -32,7 +39,9 @@ const RoomExpenses = () => {
   const [description, setDescription] = useState('');
   const [paidBy, setPaidBy] = useState('');
   const [paidByManual, setPaidByManual] = useState('');
-  const [selectedGroceryItems, setSelectedGroceryItems] = useState<string[]>([]);
+  const [cartItems, setCartItems] = useState<CartItem[]>([]);
+  const [cartOpen, setCartOpen] = useState(false);
+  const [grocerySearch, setGrocerySearch] = useState('');
   const [newGroceryItem, setNewGroceryItem] = useState('');
 
   const adminId = isAdmin ? profile?.id : profile?.admin_id;
@@ -77,7 +86,18 @@ const RoomExpenses = () => {
     enabled: !!adminId,
   });
 
+  // CHANGE 6: Filter virtual members for non-admin users
   const allMembers = useMemo(() => {
+    const real = members.map((m: any) => ({ id: m.user_id || m.id, name: m.name, type: 'real' }));
+    if (isAdmin) {
+      const virtual = virtualMembers.map((v: any) => ({ id: v.id, name: v.name, type: 'virtual' }));
+      return [...real, ...virtual];
+    }
+    return real;
+  }, [members, virtualMembers, isAdmin]);
+
+  // All members including virtual for budget calculations
+  const allMembersForBudget = useMemo(() => {
     const real = members.map((m: any) => ({ id: m.user_id || m.id, name: m.name, type: 'real' }));
     const virtual = virtualMembers.map((v: any) => ({ id: v.id, name: v.name, type: 'virtual' }));
     return [...real, ...virtual];
@@ -132,11 +152,33 @@ const RoomExpenses = () => {
 
   const resetForm = () => {
     setDate(''); setCategory('Food'); setCustomCategory(''); setAmount(''); setDescription(''); setPaidBy(''); setPaidByManual('');
-    setEditingId(null); setSelectedGroceryItems([]); setNewGroceryItem('');
+    setEditingId(null); setCartItems([]); setNewGroceryItem(''); setGrocerySearch(''); setCartOpen(false);
   };
 
   const getEffectiveCategory = () => category === '_custom' ? customCategory.trim() : category;
   const getEffectivePaidBy = () => paidBy === '_manual' ? paidByManual.trim() : (paidBy || profile?.name || '');
+
+  const cartTotal = useMemo(() => cartItems.reduce((s, item) => s + item.quantity * item.unitPrice, 0), [cartItems]);
+
+  // Auto-populate amount from cart total
+  useEffect(() => {
+    if (cartItems.length > 0 && cartTotal > 0) {
+      setAmount(String(cartTotal));
+    }
+  }, [cartTotal, cartItems.length]);
+
+  const addToCart = (grocery: any) => {
+    if (cartItems.some(ci => ci.groceryId === grocery.id)) return;
+    setCartItems(prev => [...prev, { groceryId: grocery.id, name: grocery.name, quantity: 1, unitPrice: 0 }]);
+  };
+
+  const removeFromCart = (groceryId: string) => {
+    setCartItems(prev => prev.filter(ci => ci.groceryId !== groceryId));
+  };
+
+  const updateCartItem = (groceryId: string, field: 'quantity' | 'unitPrice', value: number) => {
+    setCartItems(prev => prev.map(ci => ci.groceryId === groceryId ? { ...ci, [field]: value } : ci));
+  };
 
   const addGroceryItem = async () => {
     if (!newGroceryItem.trim() || !adminId) return;
@@ -144,17 +186,17 @@ const RoomExpenses = () => {
     const { data, error } = await supabase.from('groceries').insert({ admin_id: effAdminId, name: newGroceryItem.trim() }).select().single();
     if (!error && data) {
       refetchGroceries();
-      setSelectedGroceryItems(prev => [...prev, data.id]);
+      // Auto-add to cart
+      setCartItems(prev => [...prev, { groceryId: data.id, name: data.name, quantity: 1, unitPrice: 0 }]);
       setNewGroceryItem('');
-      toast({ title: 'Grocery item added' });
+      toast({ title: 'Item added to grocery list & cart' });
     }
   };
 
-  const removeGroceryItem = async (id: string) => {
-    await supabase.from('groceries').delete().eq('id', id);
-    refetchGroceries();
-    setSelectedGroceryItems(prev => prev.filter(g => g !== id));
-  };
+  const filteredGroceries = useMemo(() => {
+    if (!grocerySearch.trim()) return groceries;
+    return groceries.filter((g: any) => g.name.toLowerCase().includes(grocerySearch.toLowerCase()));
+  }, [groceries, grocerySearch]);
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -170,7 +212,7 @@ const RoomExpenses = () => {
 
     if (!editingId) {
       const existingDailyTotal = dailyTotals[date] || 0;
-      if (dailyFoodBudget > 0 && existingDailyTotal + Number(amount) > dailyFoodBudget * allMembers.length) {
+      if (dailyFoodBudget > 0 && existingDailyTotal + Number(amount) > dailyFoodBudget * allMembersForBudget.length) {
         toast({ title: '⚠️ Daily spending limit exceeded.', description: `Total for ${date} will exceed the daily budget.`, variant: 'destructive' });
       }
       if (effectiveCategory.toLowerCase() === 'food') {
@@ -188,9 +230,9 @@ const RoomExpenses = () => {
       if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
       // Update grocery items for edited expense
       await supabase.from('expense_grocery_items').delete().eq('expense_id', editingId);
-      if (selectedGroceryItems.length > 0) {
+      if (cartItems.length > 0) {
         await supabase.from('expense_grocery_items').insert(
-          selectedGroceryItems.map(gid => ({ expense_id: editingId, grocery_id: gid }))
+          cartItems.map(ci => ({ expense_id: editingId, grocery_id: ci.groceryId, item_name: ci.name, quantity: ci.quantity, unit_price: ci.unitPrice }))
         );
       }
       toast({ title: 'Updated' });
@@ -201,10 +243,10 @@ const RoomExpenses = () => {
         .select('id')
         .single();
       if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
-      // Save grocery items
-      if (inserted && selectedGroceryItems.length > 0) {
+      // Save itemized grocery data
+      if (inserted && cartItems.length > 0) {
         await supabase.from('expense_grocery_items').insert(
-          selectedGroceryItems.map(gid => ({ expense_id: inserted.id, grocery_id: gid }))
+          cartItems.map(ci => ({ expense_id: inserted.id, grocery_id: ci.groceryId, item_name: ci.name, quantity: ci.quantity, unit_price: ci.unitPrice }))
         );
       }
       await supabase.from('purse_transactions')
@@ -236,7 +278,6 @@ const RoomExpenses = () => {
       setCustomCategory(exp.category);
     }
     setAmount(String(exp.amount)); setDescription(exp.description || '');
-    // Check if paid_by matches a member name
     const memberMatch = allMembers.find(m => m.name === exp.paid_by);
     if (memberMatch) {
       setPaidBy(exp.paid_by);
@@ -245,7 +286,7 @@ const RoomExpenses = () => {
       setPaidBy('_manual');
       setPaidByManual(exp.paid_by || '');
     }
-    setSelectedGroceryItems([]);
+    setCartItems([]);
     setOpen(true);
   };
 
@@ -345,31 +386,87 @@ const RoomExpenses = () => {
                   </div>
                   <div className="space-y-2"><Label>Description</Label><Textarea value={description} onChange={e => setDescription(e.target.value)} /></div>
 
-                  {/* Grocery Items */}
-                  <div className="space-y-2">
-                    <Label>Items Purchased (Grocery)</Label>
-                    <div className="flex flex-wrap gap-2">
-                      {groceries.map((g: any) => (
-                        <label key={g.id} className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-full border cursor-pointer transition-colors ${selectedGroceryItems.includes(g.id) ? 'bg-primary text-primary-foreground border-primary' : 'bg-muted/50 text-foreground border-border hover:bg-muted'}`}>
-                          <Checkbox
-                            checked={selectedGroceryItems.includes(g.id)}
-                            onCheckedChange={(checked) => {
-                              setSelectedGroceryItems(prev => checked ? [...prev, g.id] : prev.filter(x => x !== g.id));
-                            }}
-                            className="hidden"
-                          />
-                          {g.name}
-                          {isAdmin && (
-                            <button type="button" onClick={(ev) => { ev.preventDefault(); removeGroceryItem(g.id); }} className="ml-1 text-muted-foreground hover:text-destructive">×</button>
-                          )}
-                        </label>
-                      ))}
-                    </div>
-                    <div className="flex gap-2">
-                      <Input placeholder="Add missing item..." value={newGroceryItem} onChange={e => setNewGroceryItem(e.target.value)} className="h-8 text-sm" onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addGroceryItem(); } }} />
-                      <Button type="button" size="sm" variant="outline" onClick={addGroceryItem} className="h-8">Add</Button>
-                    </div>
-                  </div>
+                  {/* Cart-style Grocery Items */}
+                  <Collapsible open={cartOpen} onOpenChange={setCartOpen}>
+                    <CollapsibleTrigger asChild>
+                      <Button type="button" variant="outline" className="w-full justify-between">
+                        <span className="flex items-center gap-2">
+                          <ShoppingCart className="w-4 h-4" />
+                          Items Purchased ({cartItems.length})
+                          {cartTotal > 0 && <span className="text-xs text-muted-foreground">· ₹{cartTotal}</span>}
+                        </span>
+                        <ChevronDown className={`w-4 h-4 transition-transform ${cartOpen ? 'rotate-180' : ''}`} />
+                      </Button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="mt-3 space-y-3">
+                      {/* Search & select groceries */}
+                      <Input
+                        placeholder="Search grocery items..."
+                        value={grocerySearch}
+                        onChange={e => setGrocerySearch(e.target.value)}
+                        className="h-8 text-sm"
+                      />
+                      <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
+                        {filteredGroceries.map((g: any) => {
+                          const inCart = cartItems.some(ci => ci.groceryId === g.id);
+                          return (
+                            <button
+                              key={g.id}
+                              type="button"
+                              onClick={() => !inCart && addToCart(g)}
+                              className={`text-xs px-2.5 py-1.5 rounded-full border transition-colors ${inCart ? 'bg-primary text-primary-foreground border-primary opacity-60 cursor-default' : 'bg-muted/50 text-foreground border-border hover:bg-muted cursor-pointer'}`}
+                            >
+                              {g.name} {inCart && '✓'}
+                            </button>
+                          );
+                        })}
+                        {filteredGroceries.length === 0 && <p className="text-xs text-muted-foreground">No items found.</p>}
+                      </div>
+
+                      {/* Add missing item */}
+                      <div className="flex gap-2">
+                        <Input placeholder="Add missing item..." value={newGroceryItem} onChange={e => setNewGroceryItem(e.target.value)} className="h-8 text-sm" onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addGroceryItem(); } }} />
+                        <Button type="button" size="sm" variant="outline" onClick={addGroceryItem} className="h-8">Add</Button>
+                      </div>
+
+                      {/* Cart items with qty & price */}
+                      {cartItems.length > 0 && (
+                        <div className="border border-border rounded-lg divide-y divide-border">
+                          <div className="grid grid-cols-[1fr_60px_80px_60px_28px] gap-1 px-2 py-1.5 text-[10px] font-medium text-muted-foreground uppercase">
+                            <span>Item</span><span>Qty</span><span>Price (₹)</span><span>Total</span><span></span>
+                          </div>
+                          {cartItems.map(ci => (
+                            <div key={ci.groceryId} className="grid grid-cols-[1fr_60px_80px_60px_28px] gap-1 px-2 py-1.5 items-center">
+                              <span className="text-sm text-foreground truncate">{ci.name}</span>
+                              <Input
+                                type="number"
+                                min={1}
+                                value={ci.quantity}
+                                onChange={e => updateCartItem(ci.groceryId, 'quantity', Math.max(1, Number(e.target.value)))}
+                                className="h-7 text-xs px-1.5"
+                              />
+                              <Input
+                                type="number"
+                                min={0}
+                                value={ci.unitPrice || ''}
+                                onChange={e => updateCartItem(ci.groceryId, 'unitPrice', Number(e.target.value))}
+                                className="h-7 text-xs px-1.5"
+                                placeholder="₹"
+                              />
+                              <span className="text-xs font-medium text-foreground">₹{(ci.quantity * ci.unitPrice).toLocaleString()}</span>
+                              <button type="button" onClick={() => removeFromCart(ci.groceryId)} className="text-muted-foreground hover:text-destructive">
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          ))}
+                          <div className="flex justify-between px-2 py-2 bg-muted/50 font-medium text-sm">
+                            <span>Cart Total</span>
+                            <span>₹{cartTotal.toLocaleString()}</span>
+                          </div>
+                        </div>
+                      )}
+                    </CollapsibleContent>
+                  </Collapsible>
 
                   <Button className="w-full" type="submit">{editingId ? 'Update' : 'Add'} Expense</Button>
                 </form>
