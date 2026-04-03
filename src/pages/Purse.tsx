@@ -160,6 +160,21 @@ const Purse = () => {
                 <DialogHeader><DialogTitle>{editingId ? 'Edit' : txType === 'inflow' ? 'Add Money' : 'Add Expense'}</DialogTitle></DialogHeader>
                 <form onSubmit={save} className="space-y-4">
                   <div className="space-y-2"><Label>Amount (₹)</Label><Input type="number" value={amount} onChange={e => setAmount(e.target.value)} required /></div>
+                  <div className="space-y-2">
+                    <Label>Paid By</Label>
+                    <Select value={paidBy} onValueChange={v => { setPaidBy(v); if (v !== '_manual') setPaidByManual(''); }}>
+                      <SelectTrigger><SelectValue placeholder="Select member" /></SelectTrigger>
+                      <SelectContent>
+                        {members.map((m: any) => (
+                          <SelectItem key={m.user_id || m.id} value={m.name}>{m.name}</SelectItem>
+                        ))}
+                        <SelectItem value="_manual">✏️ Enter manually...</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {paidBy === '_manual' && (
+                      <Input placeholder="Enter name" value={paidByManual} onChange={e => setPaidByManual(e.target.value)} className="mt-2" />
+                    )}
+                  </div>
                   <div className="space-y-2"><Label>Date</Label><Input type="date" value={date} onChange={e => setDate(e.target.value)} required /></div>
                   <div className="space-y-2"><Label>Description</Label><Textarea value={description} onChange={e => setDescription(e.target.value)} /></div>
                   <Button className="w-full" type="submit">{editingId ? 'Update' : 'Save'}</Button>
