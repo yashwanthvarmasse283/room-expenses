@@ -43,6 +43,16 @@ const Purse = () => {
     enabled: !!adminId,
   });
 
+  const { data: members = [] } = useQuery({
+    queryKey: ['room_members_purse', adminId],
+    queryFn: async () => {
+      if (!adminId) return [];
+      const { data } = await supabase.from('profiles').select('id, user_id, name').or(`id.eq.${adminId},admin_id.eq.${adminId}`).eq('approved', true);
+      return data ?? [];
+    },
+    enabled: !!adminId,
+  });
+
   useEffect(() => {
     if (!adminId) return;
     const channel = supabase
