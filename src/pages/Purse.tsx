@@ -68,7 +68,7 @@ const Purse = () => {
   const totalIn = transactions.filter((t: any) => t.type === 'inflow').reduce((s: number, t: any) => s + Number(t.amount), 0);
   const totalOut = transactions.filter((t: any) => t.type === 'outflow').reduce((s: number, t: any) => s + Number(t.amount), 0);
 
-  const resetForm = () => { setAmount(''); setDate(''); setDescription(''); setEditingId(null); setTxType('inflow'); };
+  const resetForm = () => { setAmount(''); setDate(''); setDescription(''); setEditingId(null); setTxType('inflow'); setPaidBy(''); setPaidByManual(''); };
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
