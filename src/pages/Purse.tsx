@@ -70,16 +70,21 @@ const Purse = () => {
 
   const resetForm = () => { setAmount(''); setDate(''); setDescription(''); setEditingId(null); setTxType('inflow'); setPaidBy(''); setPaidByManual(''); };
 
+  const getEffectivePaidBy = () => paidBy === '_manual' ? paidByManual.trim() : (paidBy || profile?.name || '');
+
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!adminId || isViewOnly) return;
 
+    const memberName = getEffectivePaidBy();
+    const desc = description || (txType === 'inflow' ? `${memberName} - Added money` : `${memberName} - Expense`);
+
     if (editingId) {
-      const { error } = await supabase.from('purse_transactions').update({ amount: Number(amount), date, description, type: txType }).eq('id', editingId);
+      const { error } = await supabase.from('purse_transactions').update({ amount: Number(amount), date, description: desc, type: txType }).eq('id', editingId);
       if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
       toast({ title: 'Updated' });
     } else {
-      const { error } = await supabase.from('purse_transactions').insert({ admin_id: adminId, type: txType, amount: Number(amount), date, description });
+      const { error } = await supabase.from('purse_transactions').insert({ admin_id: adminId, type: txType, amount: Number(amount), date, description: desc });
       if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
       toast({ title: txType === 'inflow' ? 'Money Added' : 'Expense Added', description: `₹${amount}` });
     }
