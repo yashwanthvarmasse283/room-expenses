@@ -140,7 +140,6 @@ const UserDashboard = () => {
   }, [thisTotal, lastTotal, now]);
 
   const stats = [
-    { label: 'Room Expenses', value: `₹${totalRoom.toLocaleString()}`, icon: Receipt, color: 'text-primary' },
     { label: 'This Month', value: `₹${thisTotal.toLocaleString()}`, icon: TrendingUp, color: 'text-[hsl(var(--warning))]' },
     { label: 'Purse Balance', value: `₹${purseBalance.toLocaleString()}`, icon: Wallet, color: 'text-[hsl(var(--success))]' },
   ];
@@ -152,7 +151,7 @@ const UserDashboard = () => {
         <p className="text-sm text-muted-foreground">Your expense overview</p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {stats.map(s => (
           <Card key={s.label}>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
