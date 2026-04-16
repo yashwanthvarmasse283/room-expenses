@@ -169,7 +169,8 @@ const RoomExpenses = () => {
 
   const addToCart = (grocery: any) => {
     if (cartItems.some(ci => ci.groceryId === grocery.id)) return;
-    setCartItems(prev => [...prev, { groceryId: grocery.id, name: grocery.name, quantity: 1, unitPrice: 0 }]);
+    const defaultPrice = (grocery as any).default_price || 0;
+    setCartItems(prev => [...prev, { groceryId: grocery.id, name: grocery.name, quantity: 1, unitPrice: defaultPrice }]);
   };
 
   const removeFromCart = (groceryId: string) => {
@@ -406,8 +407,8 @@ const RoomExpenses = () => {
                         onChange={e => setGrocerySearch(e.target.value)}
                         className="h-8 text-sm"
                       />
-                      <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
-                        {filteredGroceries.map((g: any) => {
+                       <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
+                        {filteredGroceries.filter((g: any) => g.active !== false).map((g: any) => {
                           const inCart = cartItems.some(ci => ci.groceryId === g.id);
                           return (
                             <button
@@ -440,9 +441,10 @@ const RoomExpenses = () => {
                               <span className="text-sm text-foreground truncate">{ci.name}</span>
                               <Input
                                 type="number"
-                                min={1}
+                                min={0}
+                                step={1}
                                 value={ci.quantity}
-                                onChange={e => updateCartItem(ci.groceryId, 'quantity', Math.max(1, Number(e.target.value)))}
+                                onChange={e => updateCartItem(ci.groceryId, 'quantity', Math.max(0, Number(e.target.value)))}
                                 className="h-7 text-xs px-1.5"
                               />
                               <Input
