@@ -157,22 +157,55 @@ export type Database = {
       }
       groceries: {
         Row: {
+          active: boolean
           admin_id: string
           created_at: string
+          default_price: number
           id: string
           name: string
         }
         Insert: {
+          active?: boolean
           admin_id: string
           created_at?: string
+          default_price?: number
           id?: string
           name: string
         }
         Update: {
+          active?: boolean
           admin_id?: string
           created_at?: string
+          default_price?: number
           id?: string
           name?: string
+        }
+        Relationships: []
+      }
+      item_budgets: {
+        Row: {
+          admin_id: string
+          created_at: string
+          grocery_id: string
+          id: string
+          monthly_budget: number
+          updated_at: string
+        }
+        Insert: {
+          admin_id: string
+          created_at?: string
+          grocery_id: string
+          id?: string
+          monthly_budget?: number
+          updated_at?: string
+        }
+        Update: {
+          admin_id?: string
+          created_at?: string
+          grocery_id?: string
+          id?: string
+          monthly_budget?: number
+          updated_at?: string
         }
         Relationships: []
       }
