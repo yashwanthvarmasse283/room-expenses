@@ -31,6 +31,11 @@ const AdminControlCenter = () => {
   const [limitsOpen, setLimitsOpen] = useState(false);
   const [limitsForUser, setLimitsForUser] = useState<any>(null);
   const [termLimits, setTermLimits] = useState<Record<number, string>>({ 1: '500', 2: '500', 3: '500' });
+  const [addMemberOpen, setAddMemberOpen] = useState(false);
+  const [newMemberName, setNewMemberName] = useState('');
+  const [newMemberEmail, setNewMemberEmail] = useState('');
+  const [newMemberPassword, setNewMemberPassword] = useState('');
+  const [addingMember, setAddingMember] = useState(false);
 
   const { data: users = [] } = useQuery({
     queryKey: ['admin_users', profile?.id],
