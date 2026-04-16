@@ -2,7 +2,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { Receipt, TrendingUp, Wallet, Megaphone, AlertTriangle } from 'lucide-react';
+import { TrendingUp, Wallet, Megaphone, AlertTriangle } from 'lucide-react';
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
