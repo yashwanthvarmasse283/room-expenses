@@ -228,6 +228,27 @@ const AdminControlCenter = () => {
             </CardContent>
           </Card>
 
+          {/* Add Member Button */}
+          <div className="flex justify-end">
+            <Dialog open={addMemberOpen} onOpenChange={setAddMemberOpen}>
+              <DialogTrigger asChild>
+                <Button size="sm"><UserPlus className="w-4 h-4 mr-1" />Add Member</Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader><DialogTitle>Add New Member</DialogTitle></DialogHeader>
+                <div className="space-y-4">
+                  <p className="text-sm text-muted-foreground">Create a member account. They can log in directly with these credentials.</p>
+                  <div className="space-y-2"><Label>Name</Label><Input value={newMemberName} onChange={e => setNewMemberName(e.target.value)} placeholder="Full name" /></div>
+                  <div className="space-y-2"><Label>Email</Label><Input type="email" value={newMemberEmail} onChange={e => setNewMemberEmail(e.target.value)} placeholder="email@example.com" /></div>
+                  <div className="space-y-2"><Label>Password</Label><Input type="password" value={newMemberPassword} onChange={e => setNewMemberPassword(e.target.value)} placeholder="Min 6 characters" /></div>
+                  <Button className="w-full" onClick={addMember} disabled={addingMember || !newMemberName.trim() || !newMemberEmail.trim() || newMemberPassword.length < 6}>
+                    {addingMember ? 'Creating...' : 'Create Member'}
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
+
           {/* Pending */}
           {pending.length > 0 && (
             <Card>
