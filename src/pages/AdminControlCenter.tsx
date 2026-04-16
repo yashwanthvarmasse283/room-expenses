@@ -31,6 +31,11 @@ const AdminControlCenter = () => {
   const [limitsOpen, setLimitsOpen] = useState(false);
   const [limitsForUser, setLimitsForUser] = useState<any>(null);
   const [termLimits, setTermLimits] = useState<Record<number, string>>({ 1: '500', 2: '500', 3: '500' });
+  const [addMemberOpen, setAddMemberOpen] = useState(false);
+  const [newMemberName, setNewMemberName] = useState('');
+  const [newMemberEmail, setNewMemberEmail] = useState('');
+  const [newMemberPassword, setNewMemberPassword] = useState('');
+  const [addingMember, setAddingMember] = useState(false);
 
   const { data: users = [] } = useQuery({
     queryKey: ['admin_users', profile?.id],
@@ -169,6 +174,28 @@ const AdminControlCenter = () => {
     setLimitsOpen(false);
   };
 
+  const addMember = async () => {
+    if (!newMemberName.trim() || !newMemberEmail.trim() || !newMemberPassword.trim()) return;
+    setAddingMember(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await supabase.functions.invoke('create-member', {
+        body: { name: newMemberName.trim(), email: newMemberEmail.trim(), password: newMemberPassword },
+      });
+      if (res.error || res.data?.error) {
+        toast({ title: 'Error', description: res.data?.error || res.error?.message || 'Failed to create member', variant: 'destructive' });
+      } else {
+        toast({ title: 'Member Created', description: `${newMemberName} can now log in with their email and password.` });
+        setNewMemberName(''); setNewMemberEmail(''); setNewMemberPassword('');
+        setAddMemberOpen(false);
+        queryClient.invalidateQueries({ queryKey: ['admin_users'] });
+      }
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    }
+    setAddingMember(false);
+  };
+
   const pending = users.filter((u: any) => !u.approved);
   const approved = users.filter((u: any) => u.approved);
 
@@ -200,6 +227,27 @@ const AdminControlCenter = () => {
               <p className="text-xs text-muted-foreground mt-1">Admin Code: <span className="font-mono font-semibold text-primary">{profile?.admin_code}</span></p>
             </CardContent>
           </Card>
+
+          {/* Add Member Button */}
+          <div className="flex justify-end">
+            <Dialog open={addMemberOpen} onOpenChange={setAddMemberOpen}>
+              <DialogTrigger asChild>
+                <Button size="sm"><UserPlus className="w-4 h-4 mr-1" />Add Member</Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader><DialogTitle>Add New Member</DialogTitle></DialogHeader>
+                <div className="space-y-4">
+                  <p className="text-sm text-muted-foreground">Create a member account. They can log in directly with these credentials.</p>
+                  <div className="space-y-2"><Label>Name</Label><Input value={newMemberName} onChange={e => setNewMemberName(e.target.value)} placeholder="Full name" /></div>
+                  <div className="space-y-2"><Label>Email</Label><Input type="email" value={newMemberEmail} onChange={e => setNewMemberEmail(e.target.value)} placeholder="email@example.com" /></div>
+                  <div className="space-y-2"><Label>Password</Label><Input type="password" value={newMemberPassword} onChange={e => setNewMemberPassword(e.target.value)} placeholder="Min 6 characters" /></div>
+                  <Button className="w-full" onClick={addMember} disabled={addingMember || !newMemberName.trim() || !newMemberEmail.trim() || newMemberPassword.length < 6}>
+                    {addingMember ? 'Creating...' : 'Create Member'}
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
 
           {/* Pending */}
           {pending.length > 0 && (

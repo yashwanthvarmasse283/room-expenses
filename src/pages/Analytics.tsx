@@ -4,6 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import { useMemo, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { TrendingUp, TrendingDown } from 'lucide-react';
+import GroceryAnalytics from '@/components/GroceryAnalytics';
 
 const COLORS = [
   'hsl(215, 65%, 52%)', 'hsl(145, 55%, 42%)', 'hsl(38, 92%, 50%)',
@@ -81,6 +83,35 @@ const Analytics = () => {
   }, [members, virtualMembers]);
 
   const expenses = roomExpenses;
+  const now = new Date();
+
+  // Last month vs month before
+  const lastMonthExpenses = useMemo(() => {
+    const lm = new Date(now.getFullYear(), now.getMonth() - 1);
+    return expenses.filter((e: any) => {
+      const d = new Date(e.date);
+      return d.getMonth() === lm.getMonth() && d.getFullYear() === lm.getFullYear();
+    });
+  }, [expenses]);
+
+  const monthBeforeExpenses = useMemo(() => {
+    const mb = new Date(now.getFullYear(), now.getMonth() - 2);
+    return expenses.filter((e: any) => {
+      const d = new Date(e.date);
+      return d.getMonth() === mb.getMonth() && d.getFullYear() === mb.getFullYear();
+    });
+  }, [expenses]);
+
+  const lastMonthTotal = lastMonthExpenses.reduce((s: number, e: any) => s + Number(e.amount), 0);
+  const monthBeforeTotal = monthBeforeExpenses.reduce((s: number, e: any) => s + Number(e.amount), 0);
+  const lastMonthChange = monthBeforeTotal ? Math.round(((lastMonthTotal - monthBeforeTotal) / monthBeforeTotal) * 100) : 0;
+
+  const thisMonthTotal = useMemo(() => {
+    return expenses.filter((e: any) => {
+      const d = new Date(e.date);
+      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    }).reduce((s: number, e: any) => s + Number(e.amount), 0);
+  }, [expenses]);
 
   const categoryData = useMemo(() => {
     const map: Record<string, number> = {};
@@ -110,7 +141,6 @@ const Analytics = () => {
   [purse]);
 
   const termData = useMemo(() => {
-    const now = new Date();
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
     const thisMonthExpenses = expenses.filter((e: any) => {
@@ -136,7 +166,6 @@ const Analytics = () => {
     return Array.from(cats);
   }, [expenses]);
 
-  // Total Paid by Each Member (as payer)
   const paidByMemberData = useMemo(() => {
     const map: Record<string, number> = {};
     expenses.forEach((e: any) => {
@@ -146,7 +175,6 @@ const Analytics = () => {
     return Object.entries(map).map(([name, total]) => ({ name, total })).sort((a, b) => b.total - a.total);
   }, [expenses]);
 
-  // Total Spent by Each Member (equal share of all expenses across all members)
   const spentByMemberData = useMemo(() => {
     if (allMemberNames.length === 0) return [];
     const totalExp = expenses.reduce((s: number, e: any) => s + Number(e.amount), 0);
@@ -154,24 +182,43 @@ const Analytics = () => {
     return allMemberNames.map(name => ({ name, total: Math.round(perPerson) }));
   }, [expenses, allMemberNames]);
 
+  const lastMonthLabel = new Date(now.getFullYear(), now.getMonth() - 1).toLocaleString('default', { month: 'long' });
+  const monthBeforeLabel = new Date(now.getFullYear(), now.getMonth() - 2).toLocaleString('default', { month: 'short' });
+
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold text-foreground">Analytics</h1>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Total Expenses</CardTitle></CardHeader>
-          <CardContent><div className="text-2xl font-bold text-foreground">₹{expenses.reduce((s: number, e: any) => s + Number(e.amount), 0).toLocaleString()}</div></CardContent>
+          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">This Month</CardTitle></CardHeader>
+          <CardContent><div className="text-2xl font-bold text-foreground">₹{thisMonthTotal.toLocaleString()}</div></CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Last Month ({lastMonthLabel})</CardTitle></CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-foreground">₹{lastMonthTotal.toLocaleString()}</div>
+            {monthBeforeTotal > 0 && (
+              <p className={`text-xs flex items-center gap-1 mt-1 ${lastMonthChange >= 0 ? 'text-destructive' : 'text-[hsl(var(--success))]'}`}>
+                {lastMonthChange >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                {lastMonthChange >= 0 ? '+' : ''}{lastMonthChange}% vs {monthBeforeLabel}
+              </p>
+            )}
+          </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Purse Balance</CardTitle></CardHeader>
           <CardContent><div className="text-2xl font-bold text-[hsl(var(--success))]">₹{purseBalance.toLocaleString()}</div></CardContent>
         </Card>
         <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Total Inflow / Outflow</CardTitle></CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Inflow / Outflow</CardTitle></CardHeader>
           <CardContent><div className="text-sm font-medium"><span className="text-[hsl(var(--success))]">₹{totalInflow.toLocaleString()}</span> / <span className="text-destructive">₹{totalOutflow.toLocaleString()}</span></div></CardContent>
         </Card>
       </div>
+
+      {/* Grocery Analytics */}
+      <GroceryAnalytics />
 
       {/* Total Paid by Each Member */}
       <Card>

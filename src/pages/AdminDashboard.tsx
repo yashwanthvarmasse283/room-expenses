@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Receipt, Users, Wallet, MessageSquare, TrendingUp, TrendingDown, Megaphone, AlertTriangle } from 'lucide-react';
+import { Users, Wallet, MessageSquare, TrendingUp, TrendingDown, Megaphone, AlertTriangle } from 'lucide-react';
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -184,7 +184,6 @@ const AdminDashboard = () => {
   }, [recurringBills, now]);
 
   const stats = [
-    { label: 'Total Expenses', value: `₹${totalExpenses.toLocaleString()}`, icon: Receipt, color: 'text-primary' },
     { label: 'This Month', value: `₹${thisTotal.toLocaleString()}`, icon: changePercent >= 0 ? TrendingUp : TrendingDown, color: changePercent >= 0 ? 'text-destructive' : 'text-[hsl(var(--success))]', sub: `${changePercent >= 0 ? '+' : ''}${changePercent}% vs last month` },
     { label: 'Purse Balance', value: `₹${purseBalance.toLocaleString()}`, icon: Wallet, color: 'text-[hsl(var(--success))]' },
     { label: 'Pending Users', value: pending.length, icon: Users, color: 'text-[hsl(var(--warning))]' },
@@ -197,7 +196,7 @@ const AdminDashboard = () => {
         <p className="text-muted-foreground text-sm">Admin ID: <span className="font-mono font-semibold text-primary">{profile?.admin_code}</span></p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {stats.map(s => (
           <Card key={s.label}>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
