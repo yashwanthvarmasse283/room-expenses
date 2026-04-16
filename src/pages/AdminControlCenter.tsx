@@ -174,6 +174,28 @@ const AdminControlCenter = () => {
     setLimitsOpen(false);
   };
 
+  const addMember = async () => {
+    if (!newMemberName.trim() || !newMemberEmail.trim() || !newMemberPassword.trim()) return;
+    setAddingMember(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await supabase.functions.invoke('create-member', {
+        body: { name: newMemberName.trim(), email: newMemberEmail.trim(), password: newMemberPassword },
+      });
+      if (res.error || res.data?.error) {
+        toast({ title: 'Error', description: res.data?.error || res.error?.message || 'Failed to create member', variant: 'destructive' });
+      } else {
+        toast({ title: 'Member Created', description: `${newMemberName} can now log in with their email and password.` });
+        setNewMemberName(''); setNewMemberEmail(''); setNewMemberPassword('');
+        setAddMemberOpen(false);
+        queryClient.invalidateQueries({ queryKey: ['admin_users'] });
+      }
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    }
+    setAddingMember(false);
+  };
+
   const pending = users.filter((u: any) => !u.approved);
   const approved = users.filter((u: any) => u.approved);
 
