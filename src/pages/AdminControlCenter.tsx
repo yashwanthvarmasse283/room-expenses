@@ -130,6 +130,49 @@ const AdminControlCenter = () => {
     toast({ title: viewOnly ? 'View-Only Enabled' : 'View-Only Disabled', description: `${member.name} is now in ${viewOnly ? 'view-only' : 'full access'} mode.` });
   };
 
+  const toggleBlocked = async (member: any, blocked: boolean) => {
+    const { error } = await supabase.from('profiles').update({ blocked } as any).eq('id', member.id);
+    if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
+    queryClient.invalidateQueries({ queryKey: ['admin_users'] });
+    toast({ title: blocked ? 'User Blocked' : 'User Unblocked', description: `${member.name} ${blocked ? 'has been permanently blocked.' : 'can now access the room again.'}` });
+  };
+
+  const openBanDialog = (member: any) => {
+    setBanForUser(member);
+    setBanDuration('1d');
+    setBanOpen(true);
+  };
+
+  const applyBan = async () => {
+    if (!banForUser) return;
+    const map: Record<string, number> = { '1h': 3600e3, '6h': 21600e3, '1d': 86400e3, '3d': 259200e3, '7d': 604800e3, '30d': 2592000e3 };
+    const ms = map[banDuration] ?? 86400e3;
+    const until = new Date(Date.now() + ms).toISOString();
+    const { error } = await supabase.from('profiles').update({ banned_until: until } as any).eq('id', banForUser.id);
+    if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
+    queryClient.invalidateQueries({ queryKey: ['admin_users'] });
+    toast({ title: 'Member Banned', description: `${banForUser.name} is banned until ${new Date(until).toLocaleString()}.` });
+    setBanOpen(false);
+  };
+
+  const liftBan = async (member: any) => {
+    const { error } = await supabase.from('profiles').update({ banned_until: null } as any).eq('id', member.id);
+    if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
+    queryClient.invalidateQueries({ queryKey: ['admin_users'] });
+    toast({ title: 'Ban Lifted', description: `${member.name} can log in again.` });
+  };
+
+  const deleteMember = async (member: any) => {
+    // Soft-delete: detach from room, mark as deleted, but keep history intact
+    const { error } = await supabase
+      .from('profiles')
+      .update({ admin_id: null, approved: false, deleted_marker: true, blocked: true } as any)
+      .eq('id', member.id);
+    if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
+    queryClient.invalidateQueries({ queryKey: ['admin_users'] });
+    toast({ title: 'Member Deleted', description: `${member.name} has been removed. Their history is preserved as "Deleted".` });
+  };
+
   const addVirtualMember = async () => {
     if (!profile || !virtualName.trim()) return;
     const { error } = await supabase.from('virtual_roommates').insert({ admin_id: profile.id, name: virtualName.trim() });
