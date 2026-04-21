@@ -253,7 +253,9 @@ export type Database = {
       monthly_contributions: {
         Row: {
           admin_id: string
+          amount_paid: number
           created_at: string
+          expected_amount: number
           id: string
           marked_by: string | null
           month: number
@@ -267,7 +269,9 @@ export type Database = {
         }
         Insert: {
           admin_id: string
+          amount_paid?: number
           created_at?: string
+          expected_amount?: number
           id?: string
           marked_by?: string | null
           month: number
@@ -281,7 +285,9 @@ export type Database = {
         }
         Update: {
           admin_id?: string
+          amount_paid?: number
           created_at?: string
+          expected_amount?: number
           id?: string
           marked_by?: string | null
           month?: number
@@ -438,10 +444,13 @@ export type Database = {
           admin_id: string | null
           approved: boolean
           avatar_url: string | null
+          banned_until: string | null
+          blocked: boolean
           created_at: string
           daily_food_budget: number
           daily_limits_by_day: Json | null
           deactivated: boolean
+          deleted_marker: boolean
           email: string
           id: string
           mobile_number: string | null
@@ -458,10 +467,13 @@ export type Database = {
           admin_id?: string | null
           approved?: boolean
           avatar_url?: string | null
+          banned_until?: string | null
+          blocked?: boolean
           created_at?: string
           daily_food_budget?: number
           daily_limits_by_day?: Json | null
           deactivated?: boolean
+          deleted_marker?: boolean
           email: string
           id?: string
           mobile_number?: string | null
@@ -478,10 +490,13 @@ export type Database = {
           admin_id?: string | null
           approved?: boolean
           avatar_url?: string | null
+          banned_until?: string | null
+          blocked?: boolean
           created_at?: string
           daily_food_budget?: number
           daily_limits_by_day?: Json | null
           deactivated?: boolean
+          deleted_marker?: boolean
           email?: string
           id?: string
           mobile_number?: string | null
@@ -592,6 +607,8 @@ export type Database = {
           created_at: string
           created_by_name: string | null
           date: string
+          deleted_at: string | null
+          deleted_by: string | null
           description: string | null
           id: string
           image_url: string | null
@@ -606,6 +623,8 @@ export type Database = {
           created_at?: string
           created_by_name?: string | null
           date?: string
+          deleted_at?: string | null
+          deleted_by?: string | null
           description?: string | null
           id?: string
           image_url?: string | null
@@ -620,6 +639,8 @@ export type Database = {
           created_at?: string
           created_by_name?: string | null
           date?: string
+          deleted_at?: string | null
+          deleted_by?: string | null
           description?: string | null
           id?: string
           image_url?: string | null
