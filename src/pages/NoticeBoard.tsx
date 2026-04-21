@@ -8,7 +8,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Plus, Megaphone, Trash2, Pin } from 'lucide-react';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import { Plus, Megaphone, Trash2, Pin, Pencil } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -20,6 +24,12 @@ const NoticeBoard = () => {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
+
+  // Edit state
+  const [editOpen, setEditOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editContent, setEditContent] = useState('');
 
   const adminId = isAdmin ? profile?.id : profile?.admin_id;
 
@@ -65,16 +75,39 @@ const NoticeBoard = () => {
 
   const remove = async (id: string) => {
     if (isViewOnly) return;
-    await supabase.from('notices').delete().eq('id', id);
+    const { error } = await supabase.from('notices').delete().eq('id', id);
+    if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
     queryClient.invalidateQueries({ queryKey: ['notices'] });
-    toast({ title: 'Deleted' });
+    toast({ title: 'Notice Deleted' });
   };
 
   const togglePin = async (id: string, currentPinned: boolean) => {
     if (isViewOnly) return;
-    await supabase.from('notices').update({ pinned: !currentPinned } as any).eq('id', id);
+    const { error } = await supabase.from('notices').update({ pinned: !currentPinned } as any).eq('id', id);
+    if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
     queryClient.invalidateQueries({ queryKey: ['notices'] });
     toast({ title: !currentPinned ? 'Notice Pinned' : 'Notice Unpinned' });
+  };
+
+  const openEdit = (notice: any) => {
+    setEditingId(notice.id);
+    setEditTitle(notice.title);
+    setEditContent(notice.content);
+    setEditOpen(true);
+  };
+
+  const saveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingId || isViewOnly) return;
+    const { error } = await supabase
+      .from('notices')
+      .update({ title: editTitle.trim(), content: editContent.trim() })
+      .eq('id', editingId);
+    if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
+    queryClient.invalidateQueries({ queryKey: ['notices'] });
+    setEditOpen(false);
+    setEditingId(null);
+    toast({ title: 'Notice Updated' });
   };
 
   return (
@@ -101,9 +134,9 @@ const NoticeBoard = () => {
       ) : (
         <div className="space-y-4">
           {sortedNotices.map((n: any) => (
-            <Card key={n.id} className={n.pinned ? 'border-2 border-primary/40 bg-primary/5' : ''}>
+            <Card key={n.id} className={`transition-all hover:shadow-md ${n.pinned ? 'border-2 border-primary/40 bg-primary/5' : ''}`}>
               <CardHeader className="flex flex-row items-start justify-between pb-2">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   {n.pinned && <Pin className="w-4 h-4 text-primary" />}
                   <Megaphone className="w-4 h-4 text-primary" />
                   <CardTitle className="text-base">{n.title}</CardTitle>
@@ -111,12 +144,29 @@ const NoticeBoard = () => {
                 </div>
                 {isAdmin && !isViewOnly && (
                   <div className="flex gap-1">
-                    <Button variant="ghost" size="icon" onClick={() => togglePin(n.id, n.pinned)}>
+                    <Button variant="ghost" size="icon" onClick={() => togglePin(n.id, n.pinned)} title={n.pinned ? 'Unpin' : 'Pin'}>
                       <Pin className={`w-4 h-4 ${n.pinned ? 'text-primary' : 'text-muted-foreground'}`} />
                     </Button>
-                    <Button variant="ghost" size="icon" onClick={() => remove(n.id)}>
-                      <Trash2 className="w-4 h-4 text-destructive" />
+                    <Button variant="ghost" size="icon" onClick={() => openEdit(n)} title="Edit">
+                      <Pencil className="w-4 h-4 text-muted-foreground" />
                     </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="ghost" size="icon" title="Delete">
+                          <Trash2 className="w-4 h-4 text-destructive" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete this notice?</AlertDialogTitle>
+                          <AlertDialogDescription>"{n.title}" will be permanently deleted.</AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction onClick={() => remove(n.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Delete</AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </div>
                 )}
               </CardHeader>
@@ -128,6 +178,21 @@ const NoticeBoard = () => {
           ))}
         </div>
       )}
+
+      {/* Edit Notice Dialog */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Edit Notice</DialogTitle></DialogHeader>
+          <form onSubmit={saveEdit} className="space-y-4">
+            <div className="space-y-2"><Label>Title</Label><Input value={editTitle} onChange={e => setEditTitle(e.target.value)} required /></div>
+            <div className="space-y-2"><Label>Content</Label><Textarea value={editContent} onChange={e => setEditContent(e.target.value)} required rows={4} /></div>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" className="flex-1" onClick={() => setEditOpen(false)}>Cancel</Button>
+              <Button type="submit" className="flex-1">Save Changes</Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
