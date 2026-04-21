@@ -17,6 +17,9 @@ export interface Profile {
   created_at: string;
   deactivated?: boolean;
   view_only?: boolean;
+  blocked?: boolean;
+  banned_until?: string | null;
+  deleted_marker?: boolean;
 }
 
 interface AuthContextType {
