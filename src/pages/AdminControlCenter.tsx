@@ -597,6 +597,34 @@ const AdminControlCenter = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Temporary Ban Dialog */}
+      <Dialog open={banOpen} onOpenChange={setBanOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Temporarily ban {banForUser?.name}?</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">The member won't be able to log in until the ban expires. The ban lifts automatically.</p>
+            <div className="space-y-2">
+              <Label>Duration</Label>
+              <Select value={banDuration} onValueChange={setBanDuration}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1h">1 hour</SelectItem>
+                  <SelectItem value="6h">6 hours</SelectItem>
+                  <SelectItem value="1d">1 day</SelectItem>
+                  <SelectItem value="3d">3 days</SelectItem>
+                  <SelectItem value="7d">7 days</SelectItem>
+                  <SelectItem value="30d">30 days</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => setBanOpen(false)}>Cancel</Button>
+              <Button className="flex-1 bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={applyBan}>Apply Ban</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
