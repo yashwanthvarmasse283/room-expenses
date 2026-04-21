@@ -112,11 +112,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = useCallback(async (email: string, password: string): Promise<string | null> => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) return error.message;
-    
-    // Check deactivation after login
+
     if (data.user) {
-      const { data: prof } = await supabase.from('profiles').select('deactivated').eq('user_id', data.user.id).maybeSingle();
-      if (prof && (prof as any).deactivated) {
+      const { data: prof } = await supabase
+        .from('profiles')
+        .select('deactivated, blocked, banned_until')
+        .eq('user_id', data.user.id)
+        .maybeSingle();
+      const p: any = prof;
+      if (p?.blocked) {
+        await supabase.auth.signOut();
+        return 'Your account has been permanently blocked by the admin.';
+      }
+      if (p?.banned_until && new Date(p.banned_until) > new Date()) {
+        const until = new Date(p.banned_until).toLocaleString();
+        await supabase.auth.signOut();
+        return `Your account is temporarily banned until ${until}.`;
+      }
+      if (p?.deactivated) {
         await supabase.auth.signOut();
         return 'Your account has been deactivated by the admin. Please contact your room admin.';
       }
@@ -156,13 +169,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signupUser = useCallback(async (name: string, email: string, password: string, adminCode: string, mobileNumber: string): Promise<string | null> => {
     const normalizedCode = adminCode.trim();
-    const { data: adminProfile, error: adminError } = await supabase
-      .from('profiles')
-      .select('id')
-      .ilike('admin_code', normalizedCode)
-      .maybeSingle();
-    
-    if (adminError || !adminProfile) return 'Invalid Admin ID. Please check the code and try again.';
+    if (!normalizedCode) return 'Please enter a Room ID.';
+
+    // Use SECURITY DEFINER RPC so anonymous users can validate Room ID before signing up
+    const { data: adminProfileId, error: lookupError } = await supabase
+      .rpc('lookup_admin_by_code', { _code: normalizedCode });
+
+    if (lookupError) return `Room ID lookup failed: ${lookupError.message}`;
+    if (!adminProfileId) return `Invalid Room ID "${normalizedCode}". Please double-check the code with your room admin.`;
 
     const redirectUrl = `${window.location.origin}/`;
     const { data, error } = await supabase.auth.signUp({
@@ -178,7 +192,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const { error: profileError } = await supabase
       .from('profiles')
-      .update({ name, admin_id: adminProfile.id, approved: false, mobile_number: mobileNumber })
+      .update({ name, admin_id: adminProfileId as string, approved: false, mobile_number: mobileNumber })
       .eq('user_id', data.user.id);
     if (profileError) return profileError.message;
 
