@@ -53,9 +53,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .select('*')
       .eq('user_id', userId)
       .maybeSingle();
-    
-    // Check if deactivated - auto logout
-    if (profileData && (profileData as any).deactivated) {
+
+    const p: any = profileData;
+    // Auto-logout if blocked, deactivated, or currently banned
+    const banned = p?.banned_until && new Date(p.banned_until) > new Date();
+    if (p && (p.deactivated || p.blocked || banned)) {
       await supabase.auth.signOut();
       setProfile(null);
       setRole(null);
@@ -69,7 +71,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .select('role')
       .eq('user_id', userId)
       .maybeSingle();
-    
+
     setRole((roleData?.role as AppRole) ?? null);
   };
 
