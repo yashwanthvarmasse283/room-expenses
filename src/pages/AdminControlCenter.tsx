@@ -37,6 +37,9 @@ const AdminControlCenter = () => {
   const [newMemberEmail, setNewMemberEmail] = useState('');
   const [newMemberPassword, setNewMemberPassword] = useState('');
   const [addingMember, setAddingMember] = useState(false);
+  const [banOpen, setBanOpen] = useState(false);
+  const [banForUser, setBanForUser] = useState<any>(null);
+  const [banDuration, setBanDuration] = useState('1d');
 
   const { data: users = [] } = useQuery({
     queryKey: ['admin_users', profile?.id],
