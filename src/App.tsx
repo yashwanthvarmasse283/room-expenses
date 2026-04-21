@@ -27,12 +27,12 @@ import { Loader2, ShieldAlert } from "lucide-react";
 
 const queryClient = new QueryClient();
 
-const DeactivatedPage = () => (
+const RestrictedPage = ({ title, message }: { title: string; message: string }) => (
   <div className="min-h-screen flex items-center justify-center bg-background p-4 text-center">
     <div className="max-w-md space-y-4">
       <ShieldAlert className="w-16 h-16 text-destructive mx-auto" />
-      <h2 className="text-xl font-bold text-foreground">Account Restricted</h2>
-      <p className="text-muted-foreground">You are currently restricted from accessing this room. Please contact the room admin.</p>
+      <h2 className="text-xl font-bold text-foreground">{title}</h2>
+      <p className="text-muted-foreground">{message}</p>
     </div>
   </div>
 );
@@ -41,9 +41,18 @@ const ProtectedRoute = ({ children, adminOnly }: { children: React.ReactNode; ad
   const { user, role, loading, profile } = useAuth();
   if (loading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
   if (!user) return <Navigate to="/login" replace />;
-  
-  if (profile?.deactivated) return <DeactivatedPage />;
-  
+
+  if ((profile as any)?.blocked) {
+    return <RestrictedPage title="Account Blocked" message="Your account has been permanently blocked by the room admin." />;
+  }
+  const bannedUntil = (profile as any)?.banned_until;
+  if (bannedUntil && new Date(bannedUntil) > new Date()) {
+    return <RestrictedPage title="Account Banned" message={`Your account is temporarily banned until ${new Date(bannedUntil).toLocaleString()}.`} />;
+  }
+  if (profile?.deactivated) {
+    return <RestrictedPage title="Account Restricted" message="You are currently restricted from accessing this room. Please contact the room admin." />;
+  }
+
   if (role === 'user' && !profile?.approved) return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4 text-center">
       <div>
