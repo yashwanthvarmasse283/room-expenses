@@ -763,6 +763,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      lookup_admin_by_code: { Args: { _code: string }; Returns: string }
     }
     Enums: {
       app_role: "admin" | "user"

@@ -10,7 +10,8 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { Check, X, UserMinus, Shield, Save, Ban, Eye, UserPlus, Users, Settings2 } from 'lucide-react';
+import { Check, X, UserMinus, Shield, Save, Ban, Eye, UserPlus, Users, Settings2, Lock, Clock, Trash2 } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -36,6 +37,9 @@ const AdminControlCenter = () => {
   const [newMemberEmail, setNewMemberEmail] = useState('');
   const [newMemberPassword, setNewMemberPassword] = useState('');
   const [addingMember, setAddingMember] = useState(false);
+  const [banOpen, setBanOpen] = useState(false);
+  const [banForUser, setBanForUser] = useState<any>(null);
+  const [banDuration, setBanDuration] = useState('1d');
 
   const { data: users = [] } = useQuery({
     queryKey: ['admin_users', profile?.id],
@@ -124,6 +128,49 @@ const AdminControlCenter = () => {
     if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
     queryClient.invalidateQueries({ queryKey: ['admin_users'] });
     toast({ title: viewOnly ? 'View-Only Enabled' : 'View-Only Disabled', description: `${member.name} is now in ${viewOnly ? 'view-only' : 'full access'} mode.` });
+  };
+
+  const toggleBlocked = async (member: any, blocked: boolean) => {
+    const { error } = await supabase.from('profiles').update({ blocked } as any).eq('id', member.id);
+    if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
+    queryClient.invalidateQueries({ queryKey: ['admin_users'] });
+    toast({ title: blocked ? 'User Blocked' : 'User Unblocked', description: `${member.name} ${blocked ? 'has been permanently blocked.' : 'can now access the room again.'}` });
+  };
+
+  const openBanDialog = (member: any) => {
+    setBanForUser(member);
+    setBanDuration('1d');
+    setBanOpen(true);
+  };
+
+  const applyBan = async () => {
+    if (!banForUser) return;
+    const map: Record<string, number> = { '1h': 3600e3, '6h': 21600e3, '1d': 86400e3, '3d': 259200e3, '7d': 604800e3, '30d': 2592000e3 };
+    const ms = map[banDuration] ?? 86400e3;
+    const until = new Date(Date.now() + ms).toISOString();
+    const { error } = await supabase.from('profiles').update({ banned_until: until } as any).eq('id', banForUser.id);
+    if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
+    queryClient.invalidateQueries({ queryKey: ['admin_users'] });
+    toast({ title: 'Member Banned', description: `${banForUser.name} is banned until ${new Date(until).toLocaleString()}.` });
+    setBanOpen(false);
+  };
+
+  const liftBan = async (member: any) => {
+    const { error } = await supabase.from('profiles').update({ banned_until: null } as any).eq('id', member.id);
+    if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
+    queryClient.invalidateQueries({ queryKey: ['admin_users'] });
+    toast({ title: 'Ban Lifted', description: `${member.name} can log in again.` });
+  };
+
+  const deleteMember = async (member: any) => {
+    // Soft-delete: detach from room, mark as deleted, but keep history intact
+    const { error } = await supabase
+      .from('profiles')
+      .update({ admin_id: null, approved: false, deleted_marker: true, blocked: true } as any)
+      .eq('id', member.id);
+    if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
+    queryClient.invalidateQueries({ queryKey: ['admin_users'] });
+    toast({ title: 'Member Deleted', description: `${member.name} has been removed. Their history is preserved as "Deleted".` });
   };
 
   const addVirtualMember = async () => {
@@ -278,18 +325,22 @@ const AdminControlCenter = () => {
                 <p className="text-sm text-muted-foreground">No members yet. Share your Admin Code to invite users.</p>
               ) : (
                 <div className="space-y-3">
-                  {approved.map((u: any) => (
-                    <div key={u.id} className="flex items-center justify-between p-3 rounded-lg bg-muted">
+                  {approved.map((u: any) => {
+                    const isBanned = u.banned_until && new Date(u.banned_until) > new Date();
+                    return (
+                    <div key={u.id} className="flex items-center justify-between p-3 rounded-lg bg-muted transition-all hover:bg-muted/70">
                       <div>
                         <p className="font-medium text-foreground">{u.name}</p>
                         <p className="text-xs text-muted-foreground">{u.email}</p>
                         {u.mobile_number && <p className="text-xs text-muted-foreground">{u.mobile_number}</p>}
-                        <div className="flex gap-1 mt-1">
-                          {(u as any).deactivated && <Badge variant="destructive" className="text-[10px]">Deactivated</Badge>}
-                          {(u as any).view_only && <Badge variant="outline" className="text-[10px]">View-Only</Badge>}
+                        <div className="flex gap-1 mt-1 flex-wrap">
+                          {u.blocked && <Badge variant="destructive" className="text-[10px]">Blocked</Badge>}
+                          {isBanned && <Badge variant="destructive" className="text-[10px]">Banned until {new Date(u.banned_until).toLocaleDateString()}</Badge>}
+                          {u.deactivated && <Badge variant="destructive" className="text-[10px]">Deactivated</Badge>}
+                          {u.view_only && <Badge variant="outline" className="text-[10px]">View-Only</Badge>}
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1 flex-wrap justify-end">
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button variant="ghost" size="icon" onClick={() => openLimitsDialog(u)}>
@@ -301,48 +352,110 @@ const AdminControlCenter = () => {
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button
-                              variant={!(u as any).deactivated ? "ghost" : "default"}
+                              variant="ghost"
                               size="icon"
-                              className={!(u as any).deactivated ? "text-destructive hover:bg-destructive/10" : ""}
-                              onClick={() => toggleDeactivated(u, !(u as any).deactivated)}
-                            >
-                              <Ban className="w-4 h-4" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>{(u as any).deactivated ? 'Activate' : 'Deactivate'}</TooltipContent>
-                        </Tooltip>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant={!(u as any).view_only ? "ghost" : "default"}
-                              size="icon"
-                              onClick={() => toggleViewOnly(u, !(u as any).view_only)}
+                              onClick={() => toggleViewOnly(u, !u.view_only)}
+                              className={u.view_only ? "text-primary" : ""}
                             >
                               <Eye className="w-4 h-4" />
                             </Button>
                           </TooltipTrigger>
-                          <TooltipContent>{(u as any).view_only ? 'Grant Full Access' : 'Set View-Only'}</TooltipContent>
+                          <TooltipContent>{u.view_only ? 'Grant Full Access' : 'Set View-Only'}</TooltipContent>
                         </Tooltip>
+
+                        {/* Temporary Ban */}
+                        {isBanned ? (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button variant="ghost" size="icon" className="text-amber-600" onClick={() => liftBan(u)}>
+                                <Clock className="w-4 h-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Lift ban</TooltipContent>
+                          </Tooltip>
+                        ) : (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button variant="ghost" size="icon" className="text-amber-600 hover:bg-amber-500/10" onClick={() => openBanDialog(u)}>
+                                <Clock className="w-4 h-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Temporary ban</TooltipContent>
+                          </Tooltip>
+                        )}
+
+                        {/* Block (permanent) */}
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
-                            <Button variant="ghost" size="icon" className="text-destructive hover:bg-destructive/10">
+                            <Button variant="ghost" size="icon" className={u.blocked ? "text-destructive" : "text-destructive hover:bg-destructive/10"}>
+                              <Lock className="w-4 h-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>{u.blocked ? `Unblock ${u.name}?` : `Block ${u.name}?`}</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                {u.blocked
+                                  ? 'This member will be able to log in and use the room again.'
+                                  : 'This member will be permanently blocked from logging in until you manually unblock them.'}
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => toggleBlocked(u, !u.blocked)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                {u.blocked ? 'Unblock' : 'Block'}
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+
+                        {/* Remove from room (soft) */}
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="icon" className="text-muted-foreground hover:bg-muted">
                               <UserMinus className="w-4 h-4" />
                             </Button>
                           </AlertDialogTrigger>
                           <AlertDialogContent>
                             <AlertDialogHeader>
-                              <AlertDialogTitle>Remove {u.name}?</AlertDialogTitle>
-                              <AlertDialogDescription>This will remove the member from your room.</AlertDialogDescription>
+                              <AlertDialogTitle>Remove {u.name} from room?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Detaches the member from the room but keeps their account intact. They can rejoin with the Room ID.
+                              </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
                               <AlertDialogCancel>Cancel</AlertDialogCancel>
-                              <AlertDialogAction onClick={() => removeMember(u)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Remove</AlertDialogAction>
+                              <AlertDialogAction onClick={() => removeMember(u)}>Remove</AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+
+                        {/* Delete (mark as deleted, history preserved) */}
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="icon" className="text-destructive hover:bg-destructive/10">
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete {u.name}?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Marks this member as <b>Deleted</b>. Their expense and contribution history is preserved (visible with a "Deleted" badge), but they can no longer log in.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => deleteMember(u)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                Delete
+                              </AlertDialogAction>
                             </AlertDialogFooter>
                           </AlertDialogContent>
                         </AlertDialog>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </CardContent>
@@ -481,6 +594,34 @@ const AdminControlCenter = () => {
               </div>
             ))}
             <Button className="w-full" onClick={saveLimits}>Save Limits</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Temporary Ban Dialog */}
+      <Dialog open={banOpen} onOpenChange={setBanOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Temporarily ban {banForUser?.name}?</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">The member won't be able to log in until the ban expires. The ban lifts automatically.</p>
+            <div className="space-y-2">
+              <Label>Duration</Label>
+              <Select value={banDuration} onValueChange={setBanDuration}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1h">1 hour</SelectItem>
+                  <SelectItem value="6h">6 hours</SelectItem>
+                  <SelectItem value="1d">1 day</SelectItem>
+                  <SelectItem value="3d">3 days</SelectItem>
+                  <SelectItem value="7d">7 days</SelectItem>
+                  <SelectItem value="30d">30 days</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => setBanOpen(false)}>Cancel</Button>
+              <Button className="flex-1 bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={applyBan}>Apply Ban</Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
