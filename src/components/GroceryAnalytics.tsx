@@ -24,6 +24,7 @@ const GroceryAnalytics = () => {
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
   const [drillItem, setDrillItem] = useState<string | null>(null);
+  const [volatilityItem, setVolatilityItem] = useState<string>('');
 
   const { data: groceryItems = [] } = useQuery({
     queryKey: ['grocery_analytics_items', adminId],
