@@ -277,11 +277,14 @@ const Contributions = () => {
       const termStatuses = [1, 2, 3].map(term => {
         const record = getStatus(m.id, term);
         const limit = getLimit(m.id, term);
+        const paidAmount = Number(record?.amount_paid ?? (record?.paid ? limit : 0));
         return {
           term,
           paid: record?.paid === true,
+          partial: paidAmount > 0 && paidAmount < limit,
           paidAt: record?.paid_at,
-          amount: record?.paid ? limit : 0,
+          amount: paidAmount,
+          remaining: Math.max(0, limit - paidAmount),
           limit,
         };
       });
