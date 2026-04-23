@@ -152,6 +152,47 @@ const GroceryAnalytics = () => {
     return [...itemWiseData].sort((a, b) => b.count - a.count).slice(0, 10);
   }, [itemWiseData]);
 
+  // All distinct item names (for the volatility selector)
+  const allItemNames = useMemo(() => {
+    const set = new Set<string>();
+    enrichedItems.forEach((gi: any) => {
+      if (gi.item_name) set.add(gi.item_name);
+    });
+    return Array.from(set).sort();
+  }, [enrichedItems]);
+
+  // Auto-select the highest-spend item if no selection yet
+  const effectiveVolatilityItem = volatilityItem || top10Spent[0]?.name || allItemNames[0] || '';
+
+  // Price volatility for the selected item — last 6 months avg ₹/unit
+  const volatilityData = useMemo(() => {
+    if (!effectiveVolatilityItem) return [];
+    const months: { key: string; label: string; avgPrice: number; total: number }[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(selectedYear, selectedMonth - 1 - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const label = d.toLocaleString('default', { month: 'short' });
+      const itemsInMonth = enrichedItems.filter(
+        (gi: any) => gi.date.startsWith(key) && gi.item_name === effectiveVolatilityItem
+      );
+      const totalQty = itemsInMonth.reduce((s: number, gi: any) => s + Number(gi.quantity), 0);
+      const totalSpend = itemsInMonth.reduce((s: number, gi: any) => s + Number(gi.quantity) * Number(gi.unit_price), 0);
+      months.push({
+        key,
+        label,
+        avgPrice: totalQty > 0 ? Math.round(totalSpend / totalQty) : 0,
+        total: totalSpend,
+      });
+    }
+    return months;
+  }, [enrichedItems, effectiveVolatilityItem, selectedYear, selectedMonth]);
+
+  const volatilityFirstNonZero = volatilityData.find(d => d.avgPrice > 0)?.avgPrice ?? 0;
+  const volatilityLastNonZero = [...volatilityData].reverse().find(d => d.avgPrice > 0)?.avgPrice ?? 0;
+  const volatilityChangePct = volatilityFirstNonZero > 0
+    ? Math.round(((volatilityLastNonZero - volatilityFirstNonZero) / volatilityFirstNonZero) * 100)
+    : 0;
+
   // Budget vs actual
   const budgetData = useMemo(() => {
     const groceryMap: Record<string, string> = {};
