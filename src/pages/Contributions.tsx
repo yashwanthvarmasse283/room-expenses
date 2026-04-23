@@ -41,6 +41,9 @@ const Contributions = () => {
   const [pendingPayment, setPendingPayment] = useState<{ memberId: string; memberName: string; term: number } | null>(null);
   const [showFallback, setShowFallback] = useState(false);
   const [upiSelectorOpen, setUpiSelectorOpen] = useState(false);
+  const [partialOpen, setPartialOpen] = useState(false);
+  const [partialFor, setPartialFor] = useState<{ memberId: string; memberName: string; term: number; alreadyPaid: number; expected: number } | null>(null);
+  const [partialAmount, setPartialAmount] = useState('');
   // Track in-flight mutations to prevent double clicks
   const processingRef = useRef<Set<string>>(new Set());
 
