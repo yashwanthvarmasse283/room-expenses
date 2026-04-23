@@ -326,45 +326,61 @@ const Contributions = () => {
                 const canMark = (isAdmin || isSelf) && !isViewOnly;
                 const hideContribButton = isAdmin && isAdminMember && !adminContribEnabled;
                 const limit = getLimit(m.id, term);
-                const mutationKey = `${m.id}-${term}`;
-                const isProcessing = markPaid.isPending || confirmPayment.isPending;
+                const paidAmount = Number(record?.amount_paid ?? (isPaid ? limit : 0));
+                const remaining = Math.max(0, limit - paidAmount);
+                const isPartial = paidAmount > 0 && paidAmount < limit;
+                const pct = limit > 0 ? Math.min(100, Math.round((paidAmount / limit) * 100)) : 0;
+                const isProcessing = markPaid.isPending || confirmPayment.isPending || submitPartial.isPending;
 
                 return (
-                  <div key={m.id} className="flex items-center justify-between py-2 px-3 rounded-lg bg-muted/50">
-                    <div className="flex items-center gap-2">
-                      {isPaid ? <CheckCircle2 className="w-4 h-4 text-[hsl(var(--success))]" /> : <Clock className="w-4 h-4 text-[hsl(var(--warning))]" />}
-                      <div>
-                        <span className="text-sm font-medium text-foreground">{m.name}</span>
-                        {m.isVirtual && <span className="text-[10px] text-muted-foreground ml-1">(Virtual)</span>}
-                        <p className="text-[10px] text-muted-foreground">Limit: ₹{limit}</p>
+                  <div key={m.id} className="py-2 px-3 rounded-lg bg-muted/50 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        {isPaid ? <CheckCircle2 className="w-4 h-4 text-[hsl(var(--success))] flex-shrink-0" /> : <Clock className="w-4 h-4 text-[hsl(var(--warning))] flex-shrink-0" />}
+                        <div className="min-w-0">
+                          <span className="text-sm font-medium text-foreground">{m.name}</span>
+                          {m.isVirtual && <span className="text-[10px] text-muted-foreground ml-1">(Virtual)</span>}
+                          {isPartial ? (
+                            <p className="text-[10px] text-[hsl(var(--warning))] font-medium">₹{remaining} remaining of ₹{limit}</p>
+                          ) : (
+                            <p className="text-[10px] text-muted-foreground">Limit: ₹{limit}</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 flex-wrap justify-end">
+                        {isPaid ? (
+                          <>
+                            <Badge variant="secondary" className="text-xs bg-[hsl(var(--success))]/10 text-[hsl(var(--success))]">₹{limit} Paid</Badge>
+                            {isAdmin && !isViewOnly && (
+                              <Button size="sm" variant="ghost" className="text-xs h-7" onClick={() => markUnpaid.mutate({ memberId: m.id, term })} disabled={markUnpaid.isPending}>Undo</Button>
+                            )}
+                          </>
+                        ) : (
+                          canMark && !hideContribButton && (
+                            <>
+                              {isPartial && <Badge variant="outline" className="text-[10px] border-[hsl(var(--warning))] text-[hsl(var(--warning))]">₹{paidAmount} paid</Badge>}
+                              {isSelf && !m.isVirtual && (
+                                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => handlePayNow(m.id, m.name, term)} disabled={isProcessing}>
+                                  <CreditCard className="w-3 h-3 mr-1" />Pay
+                                </Button>
+                              )}
+                              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => openPartialDialog(m.id, m.name, term)} disabled={isProcessing}>
+                                <Wallet className="w-3 h-3 mr-1" />Partial
+                              </Button>
+                              <Button size="sm" className="h-7 text-xs"
+                                onClick={() => markPaid.mutate({ memberId: m.id, memberName: m.name, term })}
+                                disabled={isProcessing}
+                              >
+                                {isProcessing ? '…' : 'Mark Paid'}
+                              </Button>
+                            </>
+                          )
+                        )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      {isPaid ? (
-                        <>
-                          <Badge variant="secondary" className="text-xs bg-[hsl(var(--success))]/10 text-[hsl(var(--success))]">₹{limit} Paid</Badge>
-                          {isAdmin && !isViewOnly && (
-                            <Button size="sm" variant="ghost" className="text-xs h-7" onClick={() => markUnpaid.mutate({ memberId: m.id, term })} disabled={markUnpaid.isPending}>Undo</Button>
-                          )}
-                        </>
-                      ) : (
-                        canMark && !hideContribButton && (
-                          <div className="flex items-center gap-1">
-                            {isSelf && !m.isVirtual && (
-                              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => handlePayNow(m.id, m.name, term)} disabled={isProcessing}>
-                                <CreditCard className="w-3 h-3 mr-1" />Pay Now
-                              </Button>
-                            )}
-                            <Button size="sm" className="h-7 text-xs" 
-                              onClick={() => markPaid.mutate({ memberId: m.id, memberName: m.name, term })}
-                              disabled={isProcessing}
-                            >
-                              {isProcessing ? 'Processing...' : 'Mark Paid'}
-                            </Button>
-                          </div>
-                        )
-                      )}
-                    </div>
+                    {isPartial && (
+                      <Progress value={pct} className="h-1.5 [&>div]:bg-[hsl(var(--warning))]" />
+                    )}
                   </div>
                 );
               })}
