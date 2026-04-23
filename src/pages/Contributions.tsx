@@ -425,6 +425,11 @@ const Contributions = () => {
                           <Badge variant="secondary" className="text-[10px] bg-[hsl(var(--success))]/10 text-[hsl(var(--success))]">₹{ts.limit}</Badge>
                           {ts.paidAt && <p className="text-[10px] text-muted-foreground mt-0.5">{new Date(ts.paidAt).toLocaleDateString()}</p>}
                         </div>
+                      ) : ts.partial ? (
+                        <div>
+                          <Badge variant="outline" className="text-[10px] border-[hsl(var(--warning))] text-[hsl(var(--warning))]">₹{ts.amount} / ₹{ts.limit}</Badge>
+                          <p className="text-[10px] text-[hsl(var(--warning))] mt-0.5">₹{ts.remaining} left</p>
+                        </div>
                       ) : (
                         <div>
                           <Badge variant="outline" className="text-[10px] text-muted-foreground">Pending</Badge>
