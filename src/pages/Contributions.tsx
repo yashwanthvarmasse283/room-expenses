@@ -127,35 +127,62 @@ const Contributions = () => {
     return () => { supabase.removeChannel(channel); };
   }, [adminId, year, month, qc]);
 
-  const silentMarkPaid = async (memberId: string, memberName: string, term: number) => {
+  // Records a payment of `addAmount` toward (memberId, term).
+  // If addAmount is omitted → marks fully paid (amount_paid = expected).
+  // The DB trigger credits the wallet/purse only by the DELTA, so partial
+  // top-ups never double-count.
+  const recordPayment = async (
+    memberId: string,
+    memberName: string,
+    term: number,
+    addAmount?: number, // undefined => mark fully paid
+  ) => {
     if (!adminId) return;
     const key = `${memberId}-${term}-${month}-${year}`;
-    
-    // Idempotency: prevent double calls
     if (processingRef.current.has(key)) return;
     processingRef.current.add(key);
 
     try {
-      // Check if already paid (idempotency)
+      const expected = getLimit(memberId, term);
+
       const { data: existing } = await supabase.from('monthly_contributions')
-        .select('id, paid')
+        .select('id, amount_paid, expected_amount, paid')
         .eq('admin_id', adminId).eq('user_id', memberId)
         .eq('year', year).eq('month', month).eq('term', term)
         .maybeSingle();
 
-      if (existing?.paid) {
-        // Already paid, don't duplicate
-        return;
-      }
+      const currentPaid = Number(existing?.amount_paid ?? 0);
+      const newPaid = addAmount === undefined
+        ? expected                        // full payment
+        : currentPaid + addAmount;        // partial top-up
+      const fullyPaid = newPaid >= expected;
 
       if (existing) {
+        // Idempotency: skip if no change
+        if (currentPaid >= newPaid) return;
         const { error } = await supabase.from('monthly_contributions')
-          .update({ paid: true, paid_at: new Date().toISOString(), marked_by: user!.id })
+          .update({
+            amount_paid: newPaid,
+            expected_amount: expected,
+            paid: fullyPaid,
+            paid_at: fullyPaid ? new Date().toISOString() : null,
+            marked_by: user!.id,
+          })
           .eq('id', existing.id);
         if (error) throw error;
       } else {
         const { error } = await supabase.from('monthly_contributions')
-          .insert({ admin_id: adminId, user_id: memberId, user_name: memberName, year, month, term, paid: true, paid_at: new Date().toISOString(), marked_by: user!.id });
+          .insert({
+            admin_id: adminId,
+            user_id: memberId,
+            user_name: memberName,
+            year, month, term,
+            amount_paid: newPaid,
+            expected_amount: expected,
+            paid: fullyPaid,
+            paid_at: fullyPaid ? new Date().toISOString() : null,
+            marked_by: user!.id,
+          });
         if (error) throw error;
       }
       qc.invalidateQueries({ queryKey: ['contributions'] });
@@ -166,10 +193,40 @@ const Contributions = () => {
     }
   };
 
+  // Backwards-compatible name used elsewhere
+  const silentMarkPaid = (memberId: string, memberName: string, term: number) =>
+    recordPayment(memberId, memberName, term);
+
   const handlePayNow = (memberId: string, memberName: string, term: number) => {
     setPendingPayment({ memberId, memberName, term });
     setUpiSelectorOpen(true);
   };
+
+  const openPartialDialog = (memberId: string, memberName: string, term: number) => {
+    const expected = getLimit(memberId, term);
+    const record = getStatus(memberId, term);
+    const alreadyPaid = Number(record?.amount_paid ?? 0);
+    setPartialFor({ memberId, memberName, term, alreadyPaid, expected });
+    setPartialAmount('');
+    setPartialOpen(true);
+  };
+
+  const submitPartial = useMutation({
+    mutationFn: async () => {
+      if (!partialFor) throw new Error('No partial selected');
+      const amt = Number(partialAmount);
+      if (!amt || amt <= 0) throw new Error('Enter a valid amount');
+      const remaining = partialFor.expected - partialFor.alreadyPaid;
+      if (amt > remaining) throw new Error(`Amount exceeds remaining ₹${remaining}`);
+      await recordPayment(partialFor.memberId, partialFor.memberName, partialFor.term, amt);
+    },
+    onSuccess: () => {
+      toast({ title: 'Partial payment recorded', description: 'Purse credited.' });
+      setPartialOpen(false);
+      setPartialFor(null);
+    },
+    onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
+  });
 
   const confirmPayment = useMutation({
     mutationFn: async () => {
