@@ -92,10 +92,12 @@ const AdminControlCenter = () => {
   };
 
   const removeMember = async (member: any) => {
-    const { error } = await supabase.from('profiles').update({ admin_id: null, approved: false }).eq('id', member.id);
+    // Unlink from room: mark as unapproved & blocked so they can't access,
+    // but keep admin_id so RLS still allows admin to update them.
+    const { error } = await supabase.from('profiles').update({ approved: false, blocked: true } as any).eq('id', member.id);
     if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
     queryClient.invalidateQueries({ queryKey: ['admin_users'] });
-    toast({ title: 'Member Removed', description: `${member.name} has been removed.` });
+    toast({ title: 'Member Removed', description: `${member.name} has been removed from the room.` });
   };
 
   const saveBudget = async () => {
