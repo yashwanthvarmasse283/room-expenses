@@ -273,7 +273,53 @@ const GroceryAnalytics = () => {
         </CardContent>
       </Card>
 
-      {/* Item-wise Table */}
+      {/* Price Volatility */}
+      {allItemNames.length > 0 && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Activity className="w-4 h-4 text-primary" />Price Volatility (Last 6 Months)
+              </CardTitle>
+              <Select value={effectiveVolatilityItem} onValueChange={setVolatilityItem}>
+                <SelectTrigger className="w-[180px] h-8 text-xs"><SelectValue placeholder="Pick item" /></SelectTrigger>
+                <SelectContent>
+                  {allItemNames.map(name => (
+                    <SelectItem key={name} value={name}>{name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {volatilityData.every(d => d.avgPrice === 0) ? (
+              <p className="text-sm text-muted-foreground py-6 text-center">No price history for "{effectiveVolatilityItem}".</p>
+            ) : (
+              <div className="space-y-3">
+                <ResponsiveContainer width="100%" height={200}>
+                  <LineChart data={volatilityData}>
+                    <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                    <YAxis tick={{ fontSize: 11 }} />
+                    <Tooltip formatter={(v: number) => `₹${v}/unit`} />
+                    <Line type="monotone" dataKey="avgPrice" stroke="hsl(38, 92%, 50%)" strokeWidth={2} dot={{ r: 4 }} connectNulls />
+                  </LineChart>
+                </ResponsiveContainer>
+                <div className="flex items-center justify-center gap-3 text-xs">
+                  <span className="text-muted-foreground">6mo change:</span>
+                  <span className={`flex items-center gap-1 font-bold ${volatilityChangePct > 0 ? 'text-destructive' : volatilityChangePct < 0 ? 'text-[hsl(var(--success))]' : 'text-muted-foreground'}`}>
+                    {volatilityChangePct > 0 ? <TrendingUp className="w-3 h-3" /> : volatilityChangePct < 0 ? <TrendingDown className="w-3 h-3" /> : null}
+                    {volatilityChangePct > 0 ? '+' : ''}{volatilityChangePct}%
+                  </span>
+                  <span className="text-muted-foreground">
+                    (₹{volatilityFirstNonZero} → ₹{volatilityLastNonZero}/unit)
+                  </span>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader><CardTitle className="text-base">Grocery Item Analysis</CardTitle></CardHeader>
         <CardContent>
