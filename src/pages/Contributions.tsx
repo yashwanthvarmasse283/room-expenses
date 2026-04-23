@@ -484,6 +484,56 @@ const Contributions = () => {
         />
       )}
 
+      {/* Partial Payment Dialog */}
+      <Dialog open={partialOpen} onOpenChange={setPartialOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Record Partial Payment</DialogTitle>
+          </DialogHeader>
+          {partialFor && (
+            <div className="space-y-4">
+              <div className="text-sm text-muted-foreground">
+                <span className="font-medium text-foreground">{partialFor.memberName}</span> · Term {partialFor.term}
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="p-2 rounded bg-muted/50">
+                  <p className="text-[10px] text-muted-foreground">Expected</p>
+                  <p className="text-sm font-bold text-foreground">₹{partialFor.expected}</p>
+                </div>
+                <div className="p-2 rounded bg-muted/50">
+                  <p className="text-[10px] text-muted-foreground">Already Paid</p>
+                  <p className="text-sm font-bold text-[hsl(var(--success))]">₹{partialFor.alreadyPaid}</p>
+                </div>
+                <div className="p-2 rounded bg-muted/50">
+                  <p className="text-[10px] text-muted-foreground">Remaining</p>
+                  <p className="text-sm font-bold text-[hsl(var(--warning))]">₹{Math.max(0, partialFor.expected - partialFor.alreadyPaid)}</p>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Amount paying now</Label>
+                <Input
+                  type="number"
+                  inputMode="decimal"
+                  placeholder="e.g. 400"
+                  value={partialAmount}
+                  onChange={(e) => setPartialAmount(e.target.value)}
+                  autoFocus
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  Purse will be credited by ₹{Number(partialAmount) || 0} immediately.
+                </p>
+              </div>
+              <DialogFooter className="gap-2">
+                <Button variant="outline" onClick={() => setPartialOpen(false)} disabled={submitPartial.isPending}>Cancel</Button>
+                <Button onClick={() => submitPartial.mutate()} disabled={submitPartial.isPending || !Number(partialAmount)}>
+                  {submitPartial.isPending ? 'Recording…' : 'Record Payment'}
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {showHistory && (
         <Card>
           <CardContent className="pt-4 flex gap-3 flex-wrap">
