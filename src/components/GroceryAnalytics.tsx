@@ -5,10 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { useQuery } from '@tanstack/react-query';
-import { ShoppingCart, TrendingUp, TrendingDown, Target, ChevronDown, ChevronUp } from 'lucide-react';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { ShoppingCart, TrendingUp, TrendingDown, Target, Activity } from 'lucide-react';
 
 const COLORS = [
   'hsl(215, 65%, 52%)', 'hsl(145, 55%, 42%)', 'hsl(38, 92%, 50%)',
@@ -25,6 +24,7 @@ const GroceryAnalytics = () => {
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
   const [drillItem, setDrillItem] = useState<string | null>(null);
+  const [volatilityItem, setVolatilityItem] = useState<string>('');
 
   const { data: groceryItems = [] } = useQuery({
     queryKey: ['grocery_analytics_items', adminId],
@@ -152,6 +152,47 @@ const GroceryAnalytics = () => {
     return [...itemWiseData].sort((a, b) => b.count - a.count).slice(0, 10);
   }, [itemWiseData]);
 
+  // All distinct item names (for the volatility selector)
+  const allItemNames = useMemo(() => {
+    const set = new Set<string>();
+    enrichedItems.forEach((gi: any) => {
+      if (gi.item_name) set.add(gi.item_name);
+    });
+    return Array.from(set).sort();
+  }, [enrichedItems]);
+
+  // Auto-select the highest-spend item if no selection yet
+  const effectiveVolatilityItem = volatilityItem || top10Spent[0]?.name || allItemNames[0] || '';
+
+  // Price volatility for the selected item — last 6 months avg ₹/unit
+  const volatilityData = useMemo(() => {
+    if (!effectiveVolatilityItem) return [];
+    const months: { key: string; label: string; avgPrice: number; total: number }[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(selectedYear, selectedMonth - 1 - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const label = d.toLocaleString('default', { month: 'short' });
+      const itemsInMonth = enrichedItems.filter(
+        (gi: any) => gi.date.startsWith(key) && gi.item_name === effectiveVolatilityItem
+      );
+      const totalQty = itemsInMonth.reduce((s: number, gi: any) => s + Number(gi.quantity), 0);
+      const totalSpend = itemsInMonth.reduce((s: number, gi: any) => s + Number(gi.quantity) * Number(gi.unit_price), 0);
+      months.push({
+        key,
+        label,
+        avgPrice: totalQty > 0 ? Math.round(totalSpend / totalQty) : 0,
+        total: totalSpend,
+      });
+    }
+    return months;
+  }, [enrichedItems, effectiveVolatilityItem, selectedYear, selectedMonth]);
+
+  const volatilityFirstNonZero = volatilityData.find(d => d.avgPrice > 0)?.avgPrice ?? 0;
+  const volatilityLastNonZero = [...volatilityData].reverse().find(d => d.avgPrice > 0)?.avgPrice ?? 0;
+  const volatilityChangePct = volatilityFirstNonZero > 0
+    ? Math.round(((volatilityLastNonZero - volatilityFirstNonZero) / volatilityFirstNonZero) * 100)
+    : 0;
+
   // Budget vs actual
   const budgetData = useMemo(() => {
     const groceryMap: Record<string, string> = {};
@@ -232,7 +273,53 @@ const GroceryAnalytics = () => {
         </CardContent>
       </Card>
 
-      {/* Item-wise Table */}
+      {/* Price Volatility */}
+      {allItemNames.length > 0 && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Activity className="w-4 h-4 text-primary" />Price Volatility (Last 6 Months)
+              </CardTitle>
+              <Select value={effectiveVolatilityItem} onValueChange={setVolatilityItem}>
+                <SelectTrigger className="w-[180px] h-8 text-xs"><SelectValue placeholder="Pick item" /></SelectTrigger>
+                <SelectContent>
+                  {allItemNames.map(name => (
+                    <SelectItem key={name} value={name}>{name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {volatilityData.every(d => d.avgPrice === 0) ? (
+              <p className="text-sm text-muted-foreground py-6 text-center">No price history for "{effectiveVolatilityItem}".</p>
+            ) : (
+              <div className="space-y-3">
+                <ResponsiveContainer width="100%" height={200}>
+                  <LineChart data={volatilityData}>
+                    <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                    <YAxis tick={{ fontSize: 11 }} />
+                    <Tooltip formatter={(v: number) => `₹${v}/unit`} />
+                    <Line type="monotone" dataKey="avgPrice" stroke="hsl(38, 92%, 50%)" strokeWidth={2} dot={{ r: 4 }} connectNulls />
+                  </LineChart>
+                </ResponsiveContainer>
+                <div className="flex items-center justify-center gap-3 text-xs">
+                  <span className="text-muted-foreground">6mo change:</span>
+                  <span className={`flex items-center gap-1 font-bold ${volatilityChangePct > 0 ? 'text-destructive' : volatilityChangePct < 0 ? 'text-[hsl(var(--success))]' : 'text-muted-foreground'}`}>
+                    {volatilityChangePct > 0 ? <TrendingUp className="w-3 h-3" /> : volatilityChangePct < 0 ? <TrendingDown className="w-3 h-3" /> : null}
+                    {volatilityChangePct > 0 ? '+' : ''}{volatilityChangePct}%
+                  </span>
+                  <span className="text-muted-foreground">
+                    (₹{volatilityFirstNonZero} → ₹{volatilityLastNonZero}/unit)
+                  </span>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader><CardTitle className="text-base">Grocery Item Analysis</CardTitle></CardHeader>
         <CardContent>

@@ -2,19 +2,22 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend, LineChart, Line } from 'recharts';
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, LineChart, Line, RadialBarChart, RadialBar,
+} from 'recharts';
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { TrendingUp, TrendingDown, Wallet, Receipt, Flame, ArrowUpRight, ArrowDownRight, Users } from 'lucide-react';
+import {
+  TrendingUp, Wallet, Receipt, Flame, ArrowUpRight, ArrowDownRight,
+  Calendar, Target, Activity,
+} from 'lucide-react';
 
 const COLORS = [
   'hsl(215, 65%, 52%)', 'hsl(145, 55%, 42%)', 'hsl(38, 92%, 50%)',
   'hsl(0, 65%, 55%)', 'hsl(270, 50%, 55%)', 'hsl(180, 50%, 42%)',
   'hsl(330, 55%, 50%)', 'hsl(60, 70%, 45%)',
 ];
-
-const TERM_LABELS: Record<number, string> = { 1: 'Term 1 (1-10)', 2: 'Term 2 (11-20)', 3: 'Term 3 (21-End)' };
-const getTermForDay = (day: number) => (day <= 10 ? 1 : day <= 20 ? 2 : 3);
 
 const RoomInsights = () => {
   const { profile, role } = useAuth();
@@ -41,53 +44,23 @@ const RoomInsights = () => {
     enabled: !!adminId,
   });
 
-  const { data: contributions = [] } = useQuery({
-    queryKey: ['insights_contributions', adminId],
+  const { data: adminProfile } = useQuery({
+    queryKey: ['insights_admin_profile', adminId],
     queryFn: async () => {
-      if (!adminId) return [];
-      const { data } = await supabase.from('monthly_contributions').select('*').eq('admin_id', adminId);
-      return data ?? [];
+      if (!adminId) return null;
+      const { data } = await supabase.from('profiles').select('monthly_budget_target').eq('id', adminId).maybeSingle();
+      return data;
     },
     enabled: !!adminId,
   });
-
-  const { data: members = [] } = useQuery({
-    queryKey: ['insights_members', adminId],
-    queryFn: async () => {
-      if (!adminId) return [];
-      const { data } = await supabase.from('profiles').select('id, user_id, name').or(`id.eq.${adminId},admin_id.eq.${adminId}`).eq('approved', true);
-      return data ?? [];
-    },
-    enabled: !!adminId,
-  });
-
-  const { data: virtualMembers = [] } = useQuery({
-    queryKey: ['insights_virtual', adminId],
-    queryFn: async () => {
-      if (!adminId) return [];
-      const { data } = await supabase.from('virtual_roommates').select('*').eq('admin_id', adminId);
-      return data ?? [];
-    },
-    enabled: !!adminId,
-  });
-
-  const { data: contribLimits = [] } = useQuery({
-    queryKey: ['insights_contrib_limits', adminId],
-    queryFn: async () => {
-      if (!adminId) return [];
-      const { data } = await supabase.from('contribution_limits').select('*').eq('admin_id', adminId);
-      return data ?? [];
-    },
-    enabled: !!adminId,
-  });
-
-  const allMemberNames = useMemo(() => {
-    const real = members.map((m: any) => m.name);
-    const virtual = virtualMembers.map((v: any) => v.name);
-    return [...real, ...virtual];
-  }, [members, virtualMembers]);
+  const monthlyBudgetTarget = Number((adminProfile as any)?.monthly_budget_target) || 0;
 
   const now = new Date();
+  const thisMonthLabel = now.toLocaleString('default', { month: 'short' });
+  const lastMonthLabel = new Date(now.getFullYear(), now.getMonth() - 1).toLocaleString('default', { month: 'short' });
+  const dayOfMonth = now.getDate();
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const daysRemaining = daysInMonth - dayOfMonth;
 
   const thisMonthExp = useMemo(() => roomExpenses.filter((e: any) => {
     const d = new Date(e.date);
@@ -104,363 +77,276 @@ const RoomInsights = () => {
   const lastMonthTotal = lastMonthExp.reduce((s: number, e: any) => s + Number(e.amount), 0);
   const expenseChange = lastMonthTotal > 0 ? Math.round(((thisMonthTotal - lastMonthTotal) / lastMonthTotal) * 100) : 0;
 
-  const thisMonthContribs = contributions.filter((c: any) => c.month === now.getMonth() + 1 && c.year === now.getFullYear() && c.paid);
-  const thisMonthContribTotal = useMemo(() => {
-    return thisMonthContribs.reduce((s: number, c: any) => {
-      const limit = contribLimits.find((l: any) => l.user_id === c.user_id && l.term === c.term);
-      return s + (limit ? Number(limit.amount) : 500);
-    }, 0);
-  }, [thisMonthContribs, contribLimits]);
-
   const totalCollection = purse.filter((t: any) => t.type === 'inflow').reduce((s: number, t: any) => s + Number(t.amount), 0);
   const totalSpend = roomExpenses.reduce((s: number, e: any) => s + Number(e.amount), 0);
   const purseBalance = purse.reduce((s: number, t: any) => s + (t.type === 'inflow' ? Number(t.amount) : -Number(t.amount)), 0);
 
-  const burnRate = useMemo(() => {
-    const total = thisMonthExp.reduce((s: number, e: any) => s + Number(e.amount), 0);
-    const dayOfMonth = now.getDate();
-    return dayOfMonth > 0 ? Math.round(total / dayOfMonth) : 0;
-  }, [thisMonthExp]);
+  // Daily average (this month)
+  const dailyAverage = dayOfMonth > 0 ? Math.round(thisMonthTotal / dayOfMonth) : 0;
 
-  const { termData, allCategories, categoryData } = useMemo(() => {
-    const termTotals: Record<number, { total: number; categories: Record<string, number> }> = {
-      1: { total: 0, categories: {} }, 2: { total: 0, categories: {} }, 3: { total: 0, categories: {} },
-    };
-    const catMap: Record<string, number> = {};
+  // Burn rate gauge: budget remaining vs days remaining
+  const budgetRemaining = Math.max(0, monthlyBudgetTarget - thisMonthTotal);
+  const burnRateData = useMemo(() => {
+    if (!monthlyBudgetTarget) return [];
+    const usedPct = Math.min(100, Math.round((thisMonthTotal / monthlyBudgetTarget) * 100));
+    return [{ name: 'Used', value: usedPct, fill: usedPct > 90 ? 'hsl(0, 65%, 55%)' : usedPct > 70 ? 'hsl(38, 92%, 50%)' : 'hsl(145, 55%, 42%)' }];
+  }, [thisMonthTotal, monthlyBudgetTarget]);
+
+  // Projected spend for the month (linear extrapolation)
+  const projectedSpend = dayOfMonth > 0 ? Math.round((thisMonthTotal / dayOfMonth) * daysInMonth) : 0;
+  const projectedOver = monthlyBudgetTarget > 0 && projectedSpend > monthlyBudgetTarget;
+
+  // Category split donut (this month)
+  const categoryData = useMemo(() => {
+    const map: Record<string, number> = {};
     thisMonthExp.forEach((e: any) => {
-      const day = new Date(e.date).getDate();
-      const term = getTermForDay(day);
-      const amt = Number(e.amount);
-      termTotals[term].total += amt;
-      termTotals[term].categories[e.category] = (termTotals[term].categories[e.category] || 0) + amt;
-      catMap[e.category] = (catMap[e.category] || 0) + amt;
+      map[e.category] = (map[e.category] || 0) + Number(e.amount);
     });
-    const cats = new Set<string>();
-    thisMonthExp.forEach((e: any) => cats.add(e.category));
-    return {
-      termData: [1, 2, 3].map(t => ({ term: TERM_LABELS[t], total: termTotals[t].total, ...termTotals[t].categories })),
-      allCategories: Array.from(cats),
-      categoryData: Object.entries(catMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value),
-    };
+    return Object.entries(map).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
   }, [thisMonthExp]);
 
-  const ratio = totalCollection > 0 ? Math.min(100, Math.round((totalSpend / totalCollection) * 100)) : 0;
-  const thisMonthLabel = now.toLocaleString('default', { month: 'short' });
-  const lastMonthLabel = new Date(now.getFullYear(), now.getMonth() - 1).toLocaleString('default', { month: 'short' });
-
-  // This Month's Summary
-  const thisMonthNetBalance = thisMonthContribTotal - thisMonthTotal;
-
-  // Individual Monthly Breakdown (this month)
-  const individualMonthly = useMemo(() => {
-    return allMemberNames.map(name => {
-      const paid = thisMonthExp.filter((e: any) => e.paid_by === name).reduce((s: number, e: any) => s + Number(e.amount), 0);
-      const spent = allMemberNames.length > 0 ? Math.round(thisMonthTotal / allMemberNames.length) : 0;
-      return { name, paid, spent, net: paid - spent };
-    });
-  }, [thisMonthExp, allMemberNames, thisMonthTotal]);
-
-  // Individual All-Time Stats
-  const individualAllTime = useMemo(() => {
-    const totalAll = roomExpenses.reduce((s: number, e: any) => s + Number(e.amount), 0);
-    return allMemberNames.map(name => {
-      const paid = roomExpenses.filter((e: any) => e.paid_by === name).reduce((s: number, e: any) => s + Number(e.amount), 0);
-      const spent = allMemberNames.length > 0 ? Math.round(totalAll / allMemberNames.length) : 0;
-      return { name, paid, spent, net: paid - spent };
-    });
-  }, [roomExpenses, allMemberNames]);
-
-  // Monthly Trend Chart (all months)
+  // Monthly trend (last 6 months)
   const monthlyTrend = useMemo(() => {
     const map: Record<string, number> = {};
     roomExpenses.forEach((e: any) => {
       const key = e.date.slice(0, 7);
       map[key] = (map[key] || 0) + Number(e.amount);
     });
-    return Object.entries(map).sort().map(([month, total]) => ({ month, total }));
+    return Object.entries(map).sort().slice(-6).map(([month, total]) => ({ month, total }));
   }, [roomExpenses]);
 
-  // Contribution Compliance
-  const contribCompliance = useMemo(() => {
-    const monthMap: Record<string, { paid: number; total: number }> = {};
-    const totalMembers = allMemberNames.length;
-    contributions.forEach((c: any) => {
-      const key = `${c.year}-${String(c.month).padStart(2, '0')}`;
-      if (!monthMap[key]) monthMap[key] = { paid: 0, total: totalMembers * 3 };
-      if (c.paid) monthMap[key].paid += 1;
+  // Cumulative spend curve vs budget pace line
+  const cumulativeData = useMemo(() => {
+    const dailyMap: Record<number, number> = {};
+    thisMonthExp.forEach((e: any) => {
+      const d = new Date(e.date).getDate();
+      dailyMap[d] = (dailyMap[d] || 0) + Number(e.amount);
     });
-    return Object.entries(monthMap).sort().map(([month, d]) => ({
-      month, paid: d.paid, total: d.total, rate: d.total > 0 ? Math.round((d.paid / d.total) * 100) : 0,
-    }));
-  }, [contributions, allMemberNames]);
+    let running = 0;
+    const arr: { day: number; cumulative: number; pace: number }[] = [];
+    for (let d = 1; d <= daysInMonth; d++) {
+      if (d <= dayOfMonth) {
+        running += dailyMap[d] || 0;
+      }
+      arr.push({
+        day: d,
+        cumulative: d <= dayOfMonth ? running : NaN as any,
+        pace: monthlyBudgetTarget ? Math.round((monthlyBudgetTarget / daysInMonth) * d) : 0,
+      });
+    }
+    return arr;
+  }, [thisMonthExp, monthlyBudgetTarget, daysInMonth, dayOfMonth]);
+
+  const ratio = totalCollection > 0 ? Math.min(100, Math.round((totalSpend / totalCollection) * 100)) : 0;
 
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold text-foreground">Room Insights</h1>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm text-muted-foreground">Total Collection</CardTitle>
+            <CardTitle className="text-xs text-muted-foreground">Total Collection</CardTitle>
             <Wallet className="w-4 h-4 text-[hsl(var(--success))]" />
           </CardHeader>
-          <CardContent><div className="text-2xl font-bold text-[hsl(var(--success))]">₹{totalCollection.toLocaleString()}</div></CardContent>
+          <CardContent><div className="text-xl font-bold text-[hsl(var(--success))]">₹{totalCollection.toLocaleString()}</div></CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm text-muted-foreground">Total Spend</CardTitle>
+            <CardTitle className="text-xs text-muted-foreground">Total Spend</CardTitle>
             <Receipt className="w-4 h-4 text-destructive" />
           </CardHeader>
-          <CardContent><div className="text-2xl font-bold text-destructive">₹{totalSpend.toLocaleString()}</div></CardContent>
+          <CardContent><div className="text-xl font-bold text-destructive">₹{totalSpend.toLocaleString()}</div></CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm text-muted-foreground">Purse Balance</CardTitle>
+            <CardTitle className="text-xs text-muted-foreground">Purse Balance</CardTitle>
             <TrendingUp className="w-4 h-4 text-primary" />
           </CardHeader>
-          <CardContent><div className="text-2xl font-bold text-foreground">₹{purseBalance.toLocaleString()}</div></CardContent>
+          <CardContent><div className="text-xl font-bold text-foreground">₹{purseBalance.toLocaleString()}</div></CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm text-muted-foreground">Burn Rate</CardTitle>
-            <Flame className="w-4 h-4 text-[hsl(var(--warning))]" />
+            <CardTitle className="text-xs text-muted-foreground">Daily Avg</CardTitle>
+            <Activity className="w-4 h-4 text-[hsl(var(--warning))]" />
           </CardHeader>
-          <CardContent><div className="text-2xl font-bold text-[hsl(var(--warning))]">₹{burnRate.toLocaleString()}/day</div></CardContent>
+          <CardContent><div className="text-xl font-bold text-foreground">₹{dailyAverage.toLocaleString()}</div></CardContent>
         </Card>
       </div>
 
-      {/* This Month's Summary */}
+      {/* This Month Summary */}
       <Card>
-        <CardHeader><CardTitle className="text-base">This Month's Summary ({thisMonthLabel})</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-base">{thisMonthLabel}'s Snapshot</CardTitle></CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">Total Expenses</p>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <p className="text-xs text-muted-foreground">Spent</p>
               <p className="text-lg font-bold text-foreground">₹{thisMonthTotal.toLocaleString()}</p>
-              <div className="flex items-center gap-1 text-xs">
-                {expenseChange >= 0 ? <ArrowUpRight className="w-3 h-3 text-destructive" /> : <ArrowDownRight className="w-3 h-3 text-[hsl(var(--success))]" />}
-                <span className={expenseChange >= 0 ? 'text-destructive' : 'text-[hsl(var(--success))]'}>
-                  {Math.abs(expenseChange)}% vs {lastMonthLabel}
-                </span>
+              {lastMonthTotal > 0 && (
+                <div className="flex items-center gap-1 text-xs">
+                  {expenseChange >= 0 ? <ArrowUpRight className="w-3 h-3 text-destructive" /> : <ArrowDownRight className="w-3 h-3 text-[hsl(var(--success))]" />}
+                  <span className={expenseChange >= 0 ? 'text-destructive' : 'text-[hsl(var(--success))]'}>
+                    {Math.abs(expenseChange)}% vs {lastMonthLabel}
+                  </span>
+                </div>
+              )}
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Days Left</p>
+              <p className="text-lg font-bold text-foreground">{daysRemaining}</p>
+              <p className="text-[10px] text-muted-foreground">of {daysInMonth}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Projected</p>
+              <p className={`text-lg font-bold ${projectedOver ? 'text-destructive' : 'text-foreground'}`}>₹{projectedSpend.toLocaleString()}</p>
+              {monthlyBudgetTarget > 0 && (
+                <p className={`text-[10px] ${projectedOver ? 'text-destructive' : 'text-[hsl(var(--success))]'}`}>
+                  {projectedOver ? `Over by ₹${(projectedSpend - monthlyBudgetTarget).toLocaleString()}` : 'Within budget'}
+                </p>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Burn Rate Gauge + Category Donut */}
+      <div className="grid lg:grid-cols-2 gap-4">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2"><Flame className="w-4 h-4 text-[hsl(var(--warning))]" />Burn Rate</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {monthlyBudgetTarget === 0 ? (
+              <div className="text-center py-6 space-y-2">
+                <p className="text-sm text-muted-foreground">No monthly budget set.</p>
+                <p className="text-xs text-muted-foreground">Set one in Admin Control Center to see burn rate.</p>
               </div>
-            </div>
-            <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">Total Contributions</p>
-              <p className="text-lg font-bold text-foreground">₹{thisMonthContribTotal.toLocaleString()}</p>
-            </div>
-            <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">Net Balance</p>
-              <p className={`text-lg font-bold ${thisMonthNetBalance >= 0 ? 'text-[hsl(var(--success))]' : 'text-destructive'}`}>
-                {thisMonthNetBalance >= 0 ? '+' : ''}₹{thisMonthNetBalance.toLocaleString()}
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+            ) : (
+              <div className="space-y-3">
+                <ResponsiveContainer width="100%" height={180}>
+                  <RadialBarChart innerRadius="65%" outerRadius="100%" data={burnRateData} startAngle={180} endAngle={0}>
+                    <RadialBar dataKey="value" cornerRadius={10} background={{ fill: 'hsl(var(--muted))' }} />
+                    <text x="50%" y="55%" textAnchor="middle" dominantBaseline="middle" className="fill-foreground text-2xl font-bold">
+                      {burnRateData[0]?.value ?? 0}%
+                    </text>
+                    <text x="50%" y="72%" textAnchor="middle" dominantBaseline="middle" className="fill-muted-foreground text-xs">
+                      of budget used
+                    </text>
+                  </RadialBarChart>
+                </ResponsiveContainer>
+                <div className="grid grid-cols-2 gap-2 text-center">
+                  <div className="p-2 rounded-lg bg-muted/50">
+                    <p className="text-[10px] text-muted-foreground">Budget Left</p>
+                    <p className="text-sm font-bold text-[hsl(var(--success))]">₹{budgetRemaining.toLocaleString()}</p>
+                  </div>
+                  <div className="p-2 rounded-lg bg-muted/50">
+                    <p className="text-[10px] text-muted-foreground">Days Left</p>
+                    <p className="text-sm font-bold text-foreground">{daysRemaining}</p>
+                  </div>
+                </div>
+                {daysRemaining > 0 && (
+                  <p className="text-xs text-center text-muted-foreground">
+                    Safe daily spend: <span className="font-bold text-foreground">₹{Math.round(budgetRemaining / Math.max(1, daysRemaining)).toLocaleString()}/day</span>
+                  </p>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
-      {/* Individual Monthly Breakdown */}
-      <Card>
-        <CardHeader><CardTitle className="text-base flex items-center gap-2"><Users className="w-4 h-4 text-primary" />Individual Monthly Breakdown ({thisMonthLabel})</CardTitle></CardHeader>
-        <CardContent>
-          {individualMonthly.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No members found.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead><tr className="border-b border-border"><th className="text-left py-2 px-3 text-muted-foreground">Member</th><th className="text-right py-2 px-3 text-muted-foreground">Paid</th><th className="text-right py-2 px-3 text-muted-foreground">Spent (Share)</th><th className="text-right py-2 px-3 text-muted-foreground">Net</th></tr></thead>
-                <tbody>
-                  {individualMonthly.map(d => (
-                    <tr key={d.name} className="border-b border-border/50">
-                      <td className="py-2 px-3 text-foreground font-medium">{d.name}</td>
-                      <td className="py-2 px-3 text-right text-foreground">₹{d.paid.toLocaleString()}</td>
-                      <td className="py-2 px-3 text-right text-foreground">₹{d.spent.toLocaleString()}</td>
-                      <td className={`py-2 px-3 text-right font-bold ${d.net >= 0 ? 'text-[hsl(var(--success))]' : 'text-destructive'}`}>
-                        {d.net >= 0 ? '+' : ''}₹{d.net.toLocaleString()}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2"><Target className="w-4 h-4 text-primary" />Category Split ({thisMonthLabel})</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {categoryData.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-6 text-center">No expenses this month.</p>
+            ) : (
+              <div className="space-y-3">
+                <ResponsiveContainer width="100%" height={180}>
+                  <PieChart>
+                    <Pie data={categoryData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} innerRadius={45} paddingAngle={2}>
+                      {categoryData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                    </Pie>
+                    <Tooltip formatter={(v: number) => `₹${v.toLocaleString()}`} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="space-y-1.5">
+                  {categoryData.slice(0, 5).map((d, i) => {
+                    const pct = Math.round((d.value / thisMonthTotal) * 100);
+                    return (
+                      <div key={d.name} className="flex items-center gap-2 text-xs">
+                        <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: COLORS[i % COLORS.length] }} />
+                        <span className="text-foreground truncate flex-1">{d.name}</span>
+                        <span className="text-muted-foreground">₹{d.value.toLocaleString()} · {pct}%</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
-      {/* All-Time Totals + Individual All-Time */}
-      <Card>
-        <CardHeader><CardTitle className="text-base">All-Time Individual Stats</CardTitle></CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-3 gap-4 mb-4">
-            <div className="text-center p-3 rounded-lg bg-muted/50">
-              <p className="text-xs text-muted-foreground">Total Expenses</p>
-              <p className="text-lg font-bold text-foreground">₹{totalSpend.toLocaleString()}</p>
-            </div>
-            <div className="text-center p-3 rounded-lg bg-muted/50">
-              <p className="text-xs text-muted-foreground">Total Contributions</p>
-              <p className="text-lg font-bold text-foreground">₹{totalCollection.toLocaleString()}</p>
-            </div>
-            <div className="text-center p-3 rounded-lg bg-muted/50">
-              <p className="text-xs text-muted-foreground">Overall Balance</p>
-              <p className={`text-lg font-bold ${purseBalance >= 0 ? 'text-[hsl(var(--success))]' : 'text-destructive'}`}>₹{purseBalance.toLocaleString()}</p>
-            </div>
-          </div>
-          {individualAllTime.length > 0 && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead><tr className="border-b border-border"><th className="text-left py-2 px-3 text-muted-foreground">Member</th><th className="text-right py-2 px-3 text-muted-foreground">Total Paid</th><th className="text-right py-2 px-3 text-muted-foreground">Total Spent</th><th className="text-right py-2 px-3 text-muted-foreground">Net</th></tr></thead>
-                <tbody>
-                  {individualAllTime.map(d => (
-                    <tr key={d.name} className="border-b border-border/50">
-                      <td className="py-2 px-3 text-foreground font-medium">{d.name}</td>
-                      <td className="py-2 px-3 text-right text-foreground">₹{d.paid.toLocaleString()}</td>
-                      <td className="py-2 px-3 text-right text-foreground">₹{d.spent.toLocaleString()}</td>
-                      <td className={`py-2 px-3 text-right font-bold ${d.net >= 0 ? 'text-[hsl(var(--success))]' : 'text-destructive'}`}>
-                        {d.net >= 0 ? '+' : ''}₹{d.net.toLocaleString()}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {/* Spend Pace vs Budget Pace */}
+      {monthlyBudgetTarget > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-primary" />Spend Pace ({thisMonthLabel})
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={220}>
+              <LineChart data={cumulativeData}>
+                <XAxis dataKey="day" tick={{ fontSize: 10 }} />
+                <YAxis tick={{ fontSize: 11 }} />
+                <Tooltip formatter={(v: any) => typeof v === 'number' ? `₹${v.toLocaleString()}` : '—'} />
+                <Line type="monotone" dataKey="pace" stroke="hsl(var(--muted-foreground))" strokeDasharray="4 4" dot={false} name="Budget pace" />
+                <Line type="monotone" dataKey="cumulative" stroke="hsl(215, 65%, 52%)" strokeWidth={2} dot={false} name="Actual" connectNulls={false} />
+              </LineChart>
+            </ResponsiveContainer>
+            <p className="text-xs text-muted-foreground text-center mt-2">
+              Solid line = your spend so far · Dashed = ideal pace at ₹{Math.round(monthlyBudgetTarget / daysInMonth).toLocaleString()}/day
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
-      {/* Monthly Trend Chart */}
+      {/* Monthly Trend */}
       <Card>
         <CardHeader><CardTitle className="text-base">Monthly Expense Trend</CardTitle></CardHeader>
         <CardContent>
           {monthlyTrend.length === 0 ? (
             <p className="text-sm text-muted-foreground">No data yet.</p>
           ) : (
-            <ResponsiveContainer width="100%" height={250}>
-              <LineChart data={monthlyTrend}>
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={monthlyTrend}>
                 <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 12 }} />
-                <Tooltip />
-                <Line type="monotone" dataKey="total" stroke="hsl(215, 65%, 52%)" strokeWidth={2} dot={{ r: 4 }} />
-              </LineChart>
+                <YAxis tick={{ fontSize: 11 }} />
+                <Tooltip formatter={(v: number) => `₹${v.toLocaleString()}`} />
+                <Bar dataKey="total" fill="hsl(215, 65%, 52%)" radius={[4, 4, 0, 0]} />
+              </BarChart>
             </ResponsiveContainer>
           )}
         </CardContent>
       </Card>
 
-      {/* Collection vs Spend Progress */}
-      <Card>
-        <CardHeader><CardTitle className="text-base">Collection vs Spend</CardTitle></CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">Spent {ratio}% of collection</span>
-            <span className="font-medium text-foreground">₹{totalSpend.toLocaleString()} / ₹{totalCollection.toLocaleString()}</span>
-          </div>
-          <Progress value={ratio} className={ratio > 90 ? '[&>div]:bg-destructive' : ratio > 70 ? '[&>div]:bg-[hsl(var(--warning))]' : ''} />
-        </CardContent>
-      </Card>
-
-      {/* Category & Term Breakdown */}
-      <div className="grid lg:grid-cols-2 gap-4">
+      {/* Collection coverage – kept compact */}
+      {totalCollection > 0 && (
         <Card>
-          <CardHeader><CardTitle className="text-base">Top Expense Categories (This Month)</CardTitle></CardHeader>
-          <CardContent>
-            {categoryData.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No expenses this month.</p>
-            ) : (
-              <div className="flex items-center gap-4">
-                <ResponsiveContainer width="55%" height={220}>
-                  <PieChart>
-                    <Pie data={categoryData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={75} innerRadius={35}>
-                      {categoryData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
-                <div className="space-y-2">
-                  {categoryData.map((d, i) => (
-                    <div key={d.name} className="flex items-center gap-2 text-xs">
-                      <span className="w-3 h-3 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
-                      <span className="text-foreground">{d.name}</span>
-                      <span className="text-muted-foreground">₹{d.value.toLocaleString()}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader><CardTitle className="text-base">Term-Wise Breakdown (This Month)</CardTitle></CardHeader>
-          <CardContent>
-            {termData.every(t => t.total === 0) ? (
-              <p className="text-sm text-muted-foreground">No data yet.</p>
-            ) : (
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={termData}>
-                  <XAxis dataKey="term" tick={{ fontSize: 10 }} />
-                  <YAxis tick={{ fontSize: 12 }} />
-                  <Tooltip />
-                  <Legend />
-                  {allCategories.map((cat, i) => (
-                    <Bar key={cat} dataKey={cat} stackId="a" fill={COLORS[i % COLORS.length]} radius={i === allCategories.length - 1 ? [4, 4, 0, 0] : undefined} />
-                  ))}
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Contribution Compliance */}
-      <Card>
-        <CardHeader><CardTitle className="text-base">Contribution Compliance (Monthly)</CardTitle></CardHeader>
-        <CardContent>
-          {contribCompliance.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No contribution data yet.</p>
-          ) : (
-            <div className="space-y-4">
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={contribCompliance}>
-                  <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 12 }} domain={[0, 100]} />
-                  <Tooltip formatter={(value: any) => `${value}%`} />
-                  <Bar dataKey="rate" fill="hsl(215, 65%, 52%)" radius={[4, 4, 0, 0]} name="Compliance %" />
-                </BarChart>
-              </ResponsiveContainer>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead><tr className="border-b border-border"><th className="text-left py-2 px-3 text-muted-foreground">Month</th><th className="text-right py-2 px-3 text-muted-foreground">Paid</th><th className="text-right py-2 px-3 text-muted-foreground">Total Slots</th><th className="text-right py-2 px-3 text-muted-foreground">Rate</th></tr></thead>
-                  <tbody>
-                    {contribCompliance.map(d => (
-                      <tr key={d.month} className="border-b border-border/50">
-                        <td className="py-2 px-3 text-foreground">{d.month}</td>
-                        <td className="py-2 px-3 text-right text-foreground">{d.paid}</td>
-                        <td className="py-2 px-3 text-right text-foreground">{d.total}</td>
-                        <td className={`py-2 px-3 text-right font-bold ${d.rate >= 80 ? 'text-[hsl(var(--success))]' : d.rate >= 50 ? 'text-[hsl(var(--warning))]' : 'text-destructive'}`}>{d.rate}%</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Collection Coverage</CardTitle></CardHeader>
+          <CardContent className="space-y-2">
+            <div className="flex justify-between text-xs">
+              <span className="text-muted-foreground">{ratio}% of total collection spent</span>
+              <span className="font-medium text-foreground">₹{totalSpend.toLocaleString()} / ₹{totalCollection.toLocaleString()}</span>
             </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Term Totals */}
-      <div className="grid grid-cols-3 gap-3">
-        {termData.map((t, i) => (
-          <Card key={i} className={t.total === Math.max(...termData.map(d => d.total)) && t.total > 0 ? 'border-destructive/40 bg-destructive/5' : ''}>
-            <CardContent className="pt-4 text-center">
-              <p className="text-xs text-muted-foreground">{t.term}</p>
-              <p className="text-lg font-bold text-foreground mt-1">₹{t.total.toLocaleString()}</p>
-              {t.total === Math.max(...termData.map(d => d.total)) && t.total > 0 && (
-                <p className="text-xs text-destructive font-medium">Highest</p>
-              )}
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+            <Progress value={ratio} className={ratio > 90 ? '[&>div]:bg-destructive' : ratio > 70 ? '[&>div]:bg-[hsl(var(--warning))]' : ''} />
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };

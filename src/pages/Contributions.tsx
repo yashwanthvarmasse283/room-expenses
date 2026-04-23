@@ -3,9 +3,13 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Progress } from '@/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { CheckCircle2, Clock, History, CalendarDays, CreditCard, Copy, Users } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { CheckCircle2, Clock, History, CalendarDays, CreditCard, Copy, Users, Wallet } from 'lucide-react';
 import BulkMarkPaid from '@/components/BulkMarkPaid';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useMemo, useEffect, useRef } from 'react';
@@ -37,6 +41,9 @@ const Contributions = () => {
   const [pendingPayment, setPendingPayment] = useState<{ memberId: string; memberName: string; term: number } | null>(null);
   const [showFallback, setShowFallback] = useState(false);
   const [upiSelectorOpen, setUpiSelectorOpen] = useState(false);
+  const [partialOpen, setPartialOpen] = useState(false);
+  const [partialFor, setPartialFor] = useState<{ memberId: string; memberName: string; term: number; alreadyPaid: number; expected: number } | null>(null);
+  const [partialAmount, setPartialAmount] = useState('');
   // Track in-flight mutations to prevent double clicks
   const processingRef = useRef<Set<string>>(new Set());
 
@@ -120,35 +127,62 @@ const Contributions = () => {
     return () => { supabase.removeChannel(channel); };
   }, [adminId, year, month, qc]);
 
-  const silentMarkPaid = async (memberId: string, memberName: string, term: number) => {
+  // Records a payment of `addAmount` toward (memberId, term).
+  // If addAmount is omitted → marks fully paid (amount_paid = expected).
+  // The DB trigger credits the wallet/purse only by the DELTA, so partial
+  // top-ups never double-count.
+  const recordPayment = async (
+    memberId: string,
+    memberName: string,
+    term: number,
+    addAmount?: number, // undefined => mark fully paid
+  ) => {
     if (!adminId) return;
     const key = `${memberId}-${term}-${month}-${year}`;
-    
-    // Idempotency: prevent double calls
     if (processingRef.current.has(key)) return;
     processingRef.current.add(key);
 
     try {
-      // Check if already paid (idempotency)
+      const expected = getLimit(memberId, term);
+
       const { data: existing } = await supabase.from('monthly_contributions')
-        .select('id, paid')
+        .select('id, amount_paid, expected_amount, paid')
         .eq('admin_id', adminId).eq('user_id', memberId)
         .eq('year', year).eq('month', month).eq('term', term)
         .maybeSingle();
 
-      if (existing?.paid) {
-        // Already paid, don't duplicate
-        return;
-      }
+      const currentPaid = Number(existing?.amount_paid ?? 0);
+      const newPaid = addAmount === undefined
+        ? expected                        // full payment
+        : currentPaid + addAmount;        // partial top-up
+      const fullyPaid = newPaid >= expected;
 
       if (existing) {
+        // Idempotency: skip if no change
+        if (currentPaid >= newPaid) return;
         const { error } = await supabase.from('monthly_contributions')
-          .update({ paid: true, paid_at: new Date().toISOString(), marked_by: user!.id })
+          .update({
+            amount_paid: newPaid,
+            expected_amount: expected,
+            paid: fullyPaid,
+            paid_at: fullyPaid ? new Date().toISOString() : null,
+            marked_by: user!.id,
+          })
           .eq('id', existing.id);
         if (error) throw error;
       } else {
         const { error } = await supabase.from('monthly_contributions')
-          .insert({ admin_id: adminId, user_id: memberId, user_name: memberName, year, month, term, paid: true, paid_at: new Date().toISOString(), marked_by: user!.id });
+          .insert({
+            admin_id: adminId,
+            user_id: memberId,
+            user_name: memberName,
+            year, month, term,
+            amount_paid: newPaid,
+            expected_amount: expected,
+            paid: fullyPaid,
+            paid_at: fullyPaid ? new Date().toISOString() : null,
+            marked_by: user!.id,
+          });
         if (error) throw error;
       }
       qc.invalidateQueries({ queryKey: ['contributions'] });
@@ -159,10 +193,40 @@ const Contributions = () => {
     }
   };
 
+  // Backwards-compatible name used elsewhere
+  const silentMarkPaid = (memberId: string, memberName: string, term: number) =>
+    recordPayment(memberId, memberName, term);
+
   const handlePayNow = (memberId: string, memberName: string, term: number) => {
     setPendingPayment({ memberId, memberName, term });
     setUpiSelectorOpen(true);
   };
+
+  const openPartialDialog = (memberId: string, memberName: string, term: number) => {
+    const expected = getLimit(memberId, term);
+    const record = getStatus(memberId, term);
+    const alreadyPaid = Number(record?.amount_paid ?? 0);
+    setPartialFor({ memberId, memberName, term, alreadyPaid, expected });
+    setPartialAmount('');
+    setPartialOpen(true);
+  };
+
+  const submitPartial = useMutation({
+    mutationFn: async () => {
+      if (!partialFor) throw new Error('No partial selected');
+      const amt = Number(partialAmount);
+      if (!amt || amt <= 0) throw new Error('Enter a valid amount');
+      const remaining = partialFor.expected - partialFor.alreadyPaid;
+      if (amt > remaining) throw new Error(`Amount exceeds remaining ₹${remaining}`);
+      await recordPayment(partialFor.memberId, partialFor.memberName, partialFor.term, amt);
+    },
+    onSuccess: () => {
+      toast({ title: 'Partial payment recorded', description: 'Purse credited.' });
+      setPartialOpen(false);
+      setPartialFor(null);
+    },
+    onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
+  });
 
   const confirmPayment = useMutation({
     mutationFn: async () => {
@@ -213,11 +277,14 @@ const Contributions = () => {
       const termStatuses = [1, 2, 3].map(term => {
         const record = getStatus(m.id, term);
         const limit = getLimit(m.id, term);
+        const paidAmount = Number(record?.amount_paid ?? (record?.paid ? limit : 0));
         return {
           term,
           paid: record?.paid === true,
+          partial: paidAmount > 0 && paidAmount < limit,
           paidAt: record?.paid_at,
-          amount: record?.paid ? limit : 0,
+          amount: paidAmount,
+          remaining: Math.max(0, limit - paidAmount),
           limit,
         };
       });
@@ -259,45 +326,61 @@ const Contributions = () => {
                 const canMark = (isAdmin || isSelf) && !isViewOnly;
                 const hideContribButton = isAdmin && isAdminMember && !adminContribEnabled;
                 const limit = getLimit(m.id, term);
-                const mutationKey = `${m.id}-${term}`;
-                const isProcessing = markPaid.isPending || confirmPayment.isPending;
+                const paidAmount = Number(record?.amount_paid ?? (isPaid ? limit : 0));
+                const remaining = Math.max(0, limit - paidAmount);
+                const isPartial = paidAmount > 0 && paidAmount < limit;
+                const pct = limit > 0 ? Math.min(100, Math.round((paidAmount / limit) * 100)) : 0;
+                const isProcessing = markPaid.isPending || confirmPayment.isPending || submitPartial.isPending;
 
                 return (
-                  <div key={m.id} className="flex items-center justify-between py-2 px-3 rounded-lg bg-muted/50">
-                    <div className="flex items-center gap-2">
-                      {isPaid ? <CheckCircle2 className="w-4 h-4 text-[hsl(var(--success))]" /> : <Clock className="w-4 h-4 text-[hsl(var(--warning))]" />}
-                      <div>
-                        <span className="text-sm font-medium text-foreground">{m.name}</span>
-                        {m.isVirtual && <span className="text-[10px] text-muted-foreground ml-1">(Virtual)</span>}
-                        <p className="text-[10px] text-muted-foreground">Limit: ₹{limit}</p>
+                  <div key={m.id} className="py-2 px-3 rounded-lg bg-muted/50 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        {isPaid ? <CheckCircle2 className="w-4 h-4 text-[hsl(var(--success))] flex-shrink-0" /> : <Clock className="w-4 h-4 text-[hsl(var(--warning))] flex-shrink-0" />}
+                        <div className="min-w-0">
+                          <span className="text-sm font-medium text-foreground">{m.name}</span>
+                          {m.isVirtual && <span className="text-[10px] text-muted-foreground ml-1">(Virtual)</span>}
+                          {isPartial ? (
+                            <p className="text-[10px] text-[hsl(var(--warning))] font-medium">₹{remaining} remaining of ₹{limit}</p>
+                          ) : (
+                            <p className="text-[10px] text-muted-foreground">Limit: ₹{limit}</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 flex-wrap justify-end">
+                        {isPaid ? (
+                          <>
+                            <Badge variant="secondary" className="text-xs bg-[hsl(var(--success))]/10 text-[hsl(var(--success))]">₹{limit} Paid</Badge>
+                            {isAdmin && !isViewOnly && (
+                              <Button size="sm" variant="ghost" className="text-xs h-7" onClick={() => markUnpaid.mutate({ memberId: m.id, term })} disabled={markUnpaid.isPending}>Undo</Button>
+                            )}
+                          </>
+                        ) : (
+                          canMark && !hideContribButton && (
+                            <>
+                              {isPartial && <Badge variant="outline" className="text-[10px] border-[hsl(var(--warning))] text-[hsl(var(--warning))]">₹{paidAmount} paid</Badge>}
+                              {isSelf && !m.isVirtual && (
+                                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => handlePayNow(m.id, m.name, term)} disabled={isProcessing}>
+                                  <CreditCard className="w-3 h-3 mr-1" />Pay
+                                </Button>
+                              )}
+                              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => openPartialDialog(m.id, m.name, term)} disabled={isProcessing}>
+                                <Wallet className="w-3 h-3 mr-1" />Partial
+                              </Button>
+                              <Button size="sm" className="h-7 text-xs"
+                                onClick={() => markPaid.mutate({ memberId: m.id, memberName: m.name, term })}
+                                disabled={isProcessing}
+                              >
+                                {isProcessing ? '…' : 'Mark Paid'}
+                              </Button>
+                            </>
+                          )
+                        )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      {isPaid ? (
-                        <>
-                          <Badge variant="secondary" className="text-xs bg-[hsl(var(--success))]/10 text-[hsl(var(--success))]">₹{limit} Paid</Badge>
-                          {isAdmin && !isViewOnly && (
-                            <Button size="sm" variant="ghost" className="text-xs h-7" onClick={() => markUnpaid.mutate({ memberId: m.id, term })} disabled={markUnpaid.isPending}>Undo</Button>
-                          )}
-                        </>
-                      ) : (
-                        canMark && !hideContribButton && (
-                          <div className="flex items-center gap-1">
-                            {isSelf && !m.isVirtual && (
-                              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => handlePayNow(m.id, m.name, term)} disabled={isProcessing}>
-                                <CreditCard className="w-3 h-3 mr-1" />Pay Now
-                              </Button>
-                            )}
-                            <Button size="sm" className="h-7 text-xs" 
-                              onClick={() => markPaid.mutate({ memberId: m.id, memberName: m.name, term })}
-                              disabled={isProcessing}
-                            >
-                              {isProcessing ? 'Processing...' : 'Mark Paid'}
-                            </Button>
-                          </div>
-                        )
-                      )}
-                    </div>
+                    {isPartial && (
+                      <Progress value={pct} className="h-1.5 [&>div]:bg-[hsl(var(--warning))]" />
+                    )}
                   </div>
                 );
               })}
@@ -341,6 +424,11 @@ const Contributions = () => {
                         <div>
                           <Badge variant="secondary" className="text-[10px] bg-[hsl(var(--success))]/10 text-[hsl(var(--success))]">₹{ts.limit}</Badge>
                           {ts.paidAt && <p className="text-[10px] text-muted-foreground mt-0.5">{new Date(ts.paidAt).toLocaleDateString()}</p>}
+                        </div>
+                      ) : ts.partial ? (
+                        <div>
+                          <Badge variant="outline" className="text-[10px] border-[hsl(var(--warning))] text-[hsl(var(--warning))]">₹{ts.amount} / ₹{ts.limit}</Badge>
+                          <p className="text-[10px] text-[hsl(var(--warning))] mt-0.5">₹{ts.remaining} left</p>
                         </div>
                       ) : (
                         <div>
@@ -395,6 +483,56 @@ const Contributions = () => {
           }}
         />
       )}
+
+      {/* Partial Payment Dialog */}
+      <Dialog open={partialOpen} onOpenChange={setPartialOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Record Partial Payment</DialogTitle>
+          </DialogHeader>
+          {partialFor && (
+            <div className="space-y-4">
+              <div className="text-sm text-muted-foreground">
+                <span className="font-medium text-foreground">{partialFor.memberName}</span> · Term {partialFor.term}
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="p-2 rounded bg-muted/50">
+                  <p className="text-[10px] text-muted-foreground">Expected</p>
+                  <p className="text-sm font-bold text-foreground">₹{partialFor.expected}</p>
+                </div>
+                <div className="p-2 rounded bg-muted/50">
+                  <p className="text-[10px] text-muted-foreground">Already Paid</p>
+                  <p className="text-sm font-bold text-[hsl(var(--success))]">₹{partialFor.alreadyPaid}</p>
+                </div>
+                <div className="p-2 rounded bg-muted/50">
+                  <p className="text-[10px] text-muted-foreground">Remaining</p>
+                  <p className="text-sm font-bold text-[hsl(var(--warning))]">₹{Math.max(0, partialFor.expected - partialFor.alreadyPaid)}</p>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Amount paying now</Label>
+                <Input
+                  type="number"
+                  inputMode="decimal"
+                  placeholder="e.g. 400"
+                  value={partialAmount}
+                  onChange={(e) => setPartialAmount(e.target.value)}
+                  autoFocus
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  Purse will be credited by ₹{Number(partialAmount) || 0} immediately.
+                </p>
+              </div>
+              <DialogFooter className="gap-2">
+                <Button variant="outline" onClick={() => setPartialOpen(false)} disabled={submitPartial.isPending}>Cancel</Button>
+                <Button onClick={() => submitPartial.mutate()} disabled={submitPartial.isPending || !Number(partialAmount)}>
+                  {submitPartial.isPending ? 'Recording…' : 'Record Payment'}
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {showHistory && (
         <Card>
