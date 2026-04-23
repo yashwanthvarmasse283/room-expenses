@@ -163,14 +163,15 @@ const AdminControlCenter = () => {
   };
 
   const deleteMember = async (member: any) => {
-    // Soft-delete: detach from room, mark as deleted, but keep history intact
+    // Soft-delete: keep admin_id intact (so RLS allows the update + history stays linked),
+    // mark as deleted + blocked so they can't log back in.
     const { error } = await supabase
       .from('profiles')
-      .update({ admin_id: null, approved: false, deleted_marker: true, blocked: true } as any)
+      .update({ approved: false, deleted_marker: true, blocked: true } as any)
       .eq('id', member.id);
     if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
     queryClient.invalidateQueries({ queryKey: ['admin_users'] });
-    toast({ title: 'Member Deleted', description: `${member.name} has been removed. Their history is preserved as "Deleted".` });
+    toast({ title: 'Member Deleted', description: `${member.name} has been marked as a Deleted Roommate. Their history is preserved.` });
   };
 
   const addVirtualMember = async () => {
