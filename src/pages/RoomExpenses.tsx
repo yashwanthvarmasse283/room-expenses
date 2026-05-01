@@ -499,6 +499,52 @@ const RoomExpenses = () => {
                       </Button>
                     </CollapsibleTrigger>
                     <CollapsibleContent className="mt-3 space-y-3">
+                      {requiresItems(getEffectiveCategory()) && cartItems.length === 0 && (
+                        <p className="text-xs text-destructive bg-destructive/5 border border-destructive/30 rounded p-2">
+                          ⚠️ At least one item is required for {getEffectiveCategory()} expenses.
+                        </p>
+                      )}
+
+                      {/* Quick-text parser */}
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder='⚡ Quick add: "milk 2 120"'
+                          value={quickText}
+                          onChange={e => setQuickText(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); parseAndAddQuickText(); } }}
+                          className="h-8 text-sm"
+                        />
+                        <Button type="button" size="sm" variant="outline" onClick={parseAndAddQuickText} className="h-8" disabled={!quickText.trim()}>
+                          <Zap className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+
+                      {/* Top 5 frequent quick-add chips */}
+                      {top5Frequent.length > 0 && (
+                        <div>
+                          <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1 flex items-center gap-1">
+                            <Sparkles className="w-3 h-3" /> Frequent — one tap to add
+                          </p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {top5Frequent.map(f => {
+                              const inCart = cartItems.some(ci => ci.name.toLowerCase() === f.name.toLowerCase());
+                              const last = lastPaidMap[f.name.toLowerCase()]?.unitPrice;
+                              return (
+                                <button
+                                  key={f.name}
+                                  type="button"
+                                  disabled={inCart}
+                                  onClick={() => quickAddByName(f.name)}
+                                  className={`text-xs px-2.5 py-1.5 rounded-full border transition-colors ${inCart ? 'bg-primary text-primary-foreground border-primary opacity-60 cursor-default' : 'bg-primary/10 text-foreground border-primary/30 hover:bg-primary/20 cursor-pointer'}`}
+                                >
+                                  + {f.name}{last ? ` · ₹${last}` : ''}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
                       {/* Search & select groceries */}
                       <Input
                         placeholder="Search grocery items..."
