@@ -278,6 +278,21 @@ const RoomExpenses = () => {
       return;
     }
 
+    // Enforce itemization for Food/Grocery categories
+    if (requiresItems(effectiveCategory) && cartItems.length === 0) {
+      setCartOpen(true);
+      toast({
+        title: 'Items required',
+        description: `Please add at least one item for "${effectiveCategory}". Use the Items section below.`,
+        variant: 'destructive',
+      });
+      return;
+    }
+    // If items present, the total MUST equal cart total (cannot be manually overridden)
+    if (cartItems.length > 0 && Number(amount) !== cartTotal) {
+      setAmount(String(cartTotal));
+    }
+
     const effectivePaidBy = getEffectivePaidBy();
 
     if (!editingId) {
