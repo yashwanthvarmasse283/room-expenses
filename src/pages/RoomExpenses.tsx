@@ -166,24 +166,79 @@ const RoomExpenses = () => {
   const resetForm = () => {
     setDate(''); setCategory('Food'); setCustomCategory(''); setAmount(''); setDescription(''); setPaidBy(''); setPaidByManual('');
     setEditingId(null); setCartItems([]); setNewGroceryItem(''); setGrocerySearch(''); setCartOpen(false);
+    setQuickText('');
   };
 
   const getEffectiveCategory = () => category === '_custom' ? customCategory.trim() : category;
   const getEffectivePaidBy = () => paidBy === '_manual' ? paidByManual.trim() : (paidBy || profile?.name || '');
 
+  // Categories that REQUIRE itemization
+  const ITEM_REQUIRED_CATEGORIES = useMemo(() => new Set(['food', 'grocery', 'groceries']), []);
+  const requiresItems = (cat: string) => ITEM_REQUIRED_CATEGORIES.has(cat.trim().toLowerCase());
+
   const cartTotal = useMemo(() => cartItems.reduce((s, item) => s + item.quantity * item.unitPrice, 0), [cartItems]);
 
-  // Auto-populate amount from cart total
+  // Auto-populate amount from cart total — strict: when cart has items, amount = cart total (no manual override)
   useEffect(() => {
-    if (cartItems.length > 0 && cartTotal > 0) {
+    if (cartItems.length > 0) {
       setAmount(String(cartTotal));
     }
   }, [cartTotal, cartItems.length]);
 
+  // Last paid price per item name (case-insensitive) — for autofill
+  const enrichedHistory = useMemo(() => enrichItems(itemsHistory, expenses), [itemsHistory, expenses]);
+  const lastPaidMap = useMemo(() => buildLastPaidPriceMap(enrichedHistory), [enrichedHistory]);
+  const top5Frequent = useMemo(() => getTopFrequentItems(enrichedHistory, 5), [enrichedHistory]);
+
+  const findGroceryByName = (name: string) =>
+    groceries.find((g: any) => g.name.trim().toLowerCase() === name.trim().toLowerCase());
+
   const addToCart = (grocery: any) => {
     if (cartItems.some(ci => ci.groceryId === grocery.id)) return;
-    const defaultPrice = (grocery as any).default_price || 0;
-    setCartItems(prev => [...prev, { groceryId: grocery.id, name: grocery.name, quantity: 1, unitPrice: defaultPrice }]);
+    const lastPaid = lastPaidMap[grocery.name.trim().toLowerCase()]?.unitPrice;
+    const unitPrice = lastPaid ?? Number((grocery as any).default_price || 0);
+    setCartItems(prev => [...prev, { groceryId: grocery.id, name: grocery.name, quantity: 1, unitPrice }]);
+  };
+
+  // One-tap quick-add: ensures the item exists in the grocery master list, then adds to cart
+  const quickAddByName = async (name: string, opts?: { quantity?: number; unitPrice?: number }) => {
+    if (!adminId) return;
+    let grocery = findGroceryByName(name);
+    if (!grocery) {
+      const effAdminId = isAdmin ? profile!.id : profile!.admin_id!;
+      const { data } = await supabase.from('groceries').insert({ admin_id: effAdminId, name: name.trim() }).select().single();
+      if (data) { grocery = data; refetchGroceries(); }
+    }
+    if (!grocery) return;
+    if (cartItems.some(ci => ci.groceryId === grocery.id)) return;
+    const last = lastPaidMap[name.trim().toLowerCase()]?.unitPrice ?? 0;
+    setCartItems(prev => [
+      ...prev,
+      {
+        groceryId: grocery.id,
+        name: grocery.name,
+        quantity: opts?.quantity ?? 1,
+        unitPrice: opts?.unitPrice ?? last,
+      },
+    ]);
+  };
+
+  // Quick-text parser: "milk 2 120" or "rice 5kg 250" or "milk 120" (qty defaults to 1)
+  const parseAndAddQuickText = async () => {
+    const raw = quickText.trim();
+    if (!raw) return;
+    // Match: name (letters/spaces) then optional qty (number) then price (number)
+    const m = raw.match(/^([a-zA-Z][a-zA-Z\s]*?)\s+(?:(\d+(?:\.\d+)?)\s*[a-zA-Z]*\s+)?(\d+(?:\.\d+)?)\s*$/);
+    if (!m) {
+      toast({ title: 'Could not parse', description: 'Try: "milk 2 120" (item qty price) or "milk 120"', variant: 'destructive' });
+      return;
+    }
+    const name = m[1].trim();
+    const qty = m[2] ? Number(m[2]) : 1;
+    const price = Number(m[3]);
+    await quickAddByName(name, { quantity: qty, unitPrice: price });
+    setQuickText('');
+    setCartOpen(true);
   };
 
   const removeFromCart = (groceryId: string) => {
@@ -200,8 +255,9 @@ const RoomExpenses = () => {
     const { data, error } = await supabase.from('groceries').insert({ admin_id: effAdminId, name: newGroceryItem.trim() }).select().single();
     if (!error && data) {
       refetchGroceries();
-      // Auto-add to cart
-      setCartItems(prev => [...prev, { groceryId: data.id, name: data.name, quantity: 1, unitPrice: 0 }]);
+      const last = lastPaidMap[data.name.trim().toLowerCase()]?.unitPrice ?? 0;
+      // Auto-add to cart with last-paid-price if known
+      setCartItems(prev => [...prev, { groceryId: data.id, name: data.name, quantity: 1, unitPrice: last }]);
       setNewGroceryItem('');
       toast({ title: 'Item added to grocery list & cart' });
     }
