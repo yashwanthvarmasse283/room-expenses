@@ -6,6 +6,7 @@ import { useMemo, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { TrendingUp, TrendingDown } from 'lucide-react';
 import GroceryAnalytics from '@/components/GroceryAnalytics';
+import ItemInsightsDashboard from '@/components/ItemInsightsDashboard';
 
 const COLORS = [
   'hsl(215, 65%, 52%)', 'hsl(145, 55%, 42%)', 'hsl(38, 92%, 50%)',
@@ -217,7 +218,10 @@ const Analytics = () => {
         </Card>
       </div>
 
-      {/* Grocery Analytics */}
+      {/* Item-Level Smart Insights (NEW) */}
+      <ItemInsightsDashboard />
+
+      {/* Grocery Analytics (legacy detail view) */}
       <GroceryAnalytics />
 
       {/* Total Paid by Each Member */}

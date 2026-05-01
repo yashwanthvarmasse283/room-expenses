@@ -9,9 +9,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Plus, Pencil, Trash2, Search, Download, ShoppingCart, ChevronDown, X } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, Download, ShoppingCart, ChevronDown, X, Sparkles, Zap } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { enrichItems, buildLastPaidPriceMap, getTopFrequentItems, type RawExpense, type RawItem } from '@/lib/itemAnalytics';
 
 const defaultCategories = ['Food', 'Water', 'Rent', 'Electricity', 'Internet', 'Misc'];
 
@@ -43,6 +44,7 @@ const RoomExpenses = () => {
   const [cartOpen, setCartOpen] = useState(false);
   const [grocerySearch, setGrocerySearch] = useState('');
   const [newGroceryItem, setNewGroceryItem] = useState('');
+  const [quickText, setQuickText] = useState('');
 
   const adminId = isAdmin ? profile?.id : profile?.admin_id;
 
@@ -82,6 +84,17 @@ const RoomExpenses = () => {
       if (!adminId) return [];
       const { data } = await supabase.from('groceries').select('*').eq('admin_id', adminId).order('name');
       return data ?? [];
+    },
+    enabled: !!adminId,
+  });
+
+  // For autosuggest / last-paid-price / frequent chips
+  const { data: itemsHistory = [] } = useQuery({
+    queryKey: ['expense_items_history', adminId],
+    queryFn: async () => {
+      if (!adminId) return [];
+      const { data } = await supabase.from('expense_grocery_items').select('id, expense_id, item_name, quantity, unit_price');
+      return (data ?? []) as RawItem[];
     },
     enabled: !!adminId,
   });
@@ -153,24 +166,79 @@ const RoomExpenses = () => {
   const resetForm = () => {
     setDate(''); setCategory('Food'); setCustomCategory(''); setAmount(''); setDescription(''); setPaidBy(''); setPaidByManual('');
     setEditingId(null); setCartItems([]); setNewGroceryItem(''); setGrocerySearch(''); setCartOpen(false);
+    setQuickText('');
   };
 
   const getEffectiveCategory = () => category === '_custom' ? customCategory.trim() : category;
   const getEffectivePaidBy = () => paidBy === '_manual' ? paidByManual.trim() : (paidBy || profile?.name || '');
 
+  // Categories that REQUIRE itemization
+  const ITEM_REQUIRED_CATEGORIES = useMemo(() => new Set(['food', 'grocery', 'groceries']), []);
+  const requiresItems = (cat: string) => ITEM_REQUIRED_CATEGORIES.has(cat.trim().toLowerCase());
+
   const cartTotal = useMemo(() => cartItems.reduce((s, item) => s + item.quantity * item.unitPrice, 0), [cartItems]);
 
-  // Auto-populate amount from cart total
+  // Auto-populate amount from cart total — strict: when cart has items, amount = cart total (no manual override)
   useEffect(() => {
-    if (cartItems.length > 0 && cartTotal > 0) {
+    if (cartItems.length > 0) {
       setAmount(String(cartTotal));
     }
   }, [cartTotal, cartItems.length]);
 
+  // Last paid price per item name (case-insensitive) — for autofill
+  const enrichedHistory = useMemo(() => enrichItems(itemsHistory, expenses), [itemsHistory, expenses]);
+  const lastPaidMap = useMemo(() => buildLastPaidPriceMap(enrichedHistory), [enrichedHistory]);
+  const top5Frequent = useMemo(() => getTopFrequentItems(enrichedHistory, 5), [enrichedHistory]);
+
+  const findGroceryByName = (name: string) =>
+    groceries.find((g: any) => g.name.trim().toLowerCase() === name.trim().toLowerCase());
+
   const addToCart = (grocery: any) => {
     if (cartItems.some(ci => ci.groceryId === grocery.id)) return;
-    const defaultPrice = (grocery as any).default_price || 0;
-    setCartItems(prev => [...prev, { groceryId: grocery.id, name: grocery.name, quantity: 1, unitPrice: defaultPrice }]);
+    const lastPaid = lastPaidMap[grocery.name.trim().toLowerCase()]?.unitPrice;
+    const unitPrice = lastPaid ?? Number((grocery as any).default_price || 0);
+    setCartItems(prev => [...prev, { groceryId: grocery.id, name: grocery.name, quantity: 1, unitPrice }]);
+  };
+
+  // One-tap quick-add: ensures the item exists in the grocery master list, then adds to cart
+  const quickAddByName = async (name: string, opts?: { quantity?: number; unitPrice?: number }) => {
+    if (!adminId) return;
+    let grocery = findGroceryByName(name);
+    if (!grocery) {
+      const effAdminId = isAdmin ? profile!.id : profile!.admin_id!;
+      const { data } = await supabase.from('groceries').insert({ admin_id: effAdminId, name: name.trim() }).select().single();
+      if (data) { grocery = data; refetchGroceries(); }
+    }
+    if (!grocery) return;
+    if (cartItems.some(ci => ci.groceryId === grocery.id)) return;
+    const last = lastPaidMap[name.trim().toLowerCase()]?.unitPrice ?? 0;
+    setCartItems(prev => [
+      ...prev,
+      {
+        groceryId: grocery.id,
+        name: grocery.name,
+        quantity: opts?.quantity ?? 1,
+        unitPrice: opts?.unitPrice ?? last,
+      },
+    ]);
+  };
+
+  // Quick-text parser: "milk 2 120" or "rice 5kg 250" or "milk 120" (qty defaults to 1)
+  const parseAndAddQuickText = async () => {
+    const raw = quickText.trim();
+    if (!raw) return;
+    // Match: name (letters/spaces) then optional qty (number) then price (number)
+    const m = raw.match(/^([a-zA-Z][a-zA-Z\s]*?)\s+(?:(\d+(?:\.\d+)?)\s*[a-zA-Z]*\s+)?(\d+(?:\.\d+)?)\s*$/);
+    if (!m) {
+      toast({ title: 'Could not parse', description: 'Try: "milk 2 120" (item qty price) or "milk 120"', variant: 'destructive' });
+      return;
+    }
+    const name = m[1].trim();
+    const qty = m[2] ? Number(m[2]) : 1;
+    const price = Number(m[3]);
+    await quickAddByName(name, { quantity: qty, unitPrice: price });
+    setQuickText('');
+    setCartOpen(true);
   };
 
   const removeFromCart = (groceryId: string) => {
@@ -187,8 +255,9 @@ const RoomExpenses = () => {
     const { data, error } = await supabase.from('groceries').insert({ admin_id: effAdminId, name: newGroceryItem.trim() }).select().single();
     if (!error && data) {
       refetchGroceries();
-      // Auto-add to cart
-      setCartItems(prev => [...prev, { groceryId: data.id, name: data.name, quantity: 1, unitPrice: 0 }]);
+      const last = lastPaidMap[data.name.trim().toLowerCase()]?.unitPrice ?? 0;
+      // Auto-add to cart with last-paid-price if known
+      setCartItems(prev => [...prev, { groceryId: data.id, name: data.name, quantity: 1, unitPrice: last }]);
       setNewGroceryItem('');
       toast({ title: 'Item added to grocery list & cart' });
     }
@@ -207,6 +276,21 @@ const RoomExpenses = () => {
     if (!effectiveCategory) {
       toast({ title: 'Please enter a category name', variant: 'destructive' });
       return;
+    }
+
+    // Enforce itemization for Food/Grocery categories
+    if (requiresItems(effectiveCategory) && cartItems.length === 0) {
+      setCartOpen(true);
+      toast({
+        title: 'Items required',
+        description: `Please add at least one item for "${effectiveCategory}". Use the Items section below.`,
+        variant: 'destructive',
+      });
+      return;
+    }
+    // If items present, the total MUST equal cart total (cannot be manually overridden)
+    if (cartItems.length > 0 && Number(amount) !== cartTotal) {
+      setAmount(String(cartTotal));
     }
 
     const effectivePaidBy = getEffectivePaidBy();
@@ -256,6 +340,7 @@ const RoomExpenses = () => {
     }
     queryClient.invalidateQueries({ queryKey: ['room_expenses'] });
     queryClient.invalidateQueries({ queryKey: ['purse_transactions'] });
+    queryClient.invalidateQueries({ queryKey: ['expense_items_history'] });
     setOpen(false);
     resetForm();
   };
@@ -355,7 +440,11 @@ const RoomExpenses = () => {
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-2"><Label>Date</Label><Input type="date" value={date} onChange={e => setDate(e.target.value)} required /></div>
                     <div className="space-y-2"><Label>Category</Label>
-                      <Select value={category} onValueChange={v => { setCategory(v); if (v !== '_custom') setCustomCategory(''); }}>
+                      <Select value={category} onValueChange={v => {
+                        setCategory(v);
+                        if (v !== '_custom') setCustomCategory('');
+                        if (requiresItems(v)) setCartOpen(true);
+                      }}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
                           {defaultCategories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
@@ -368,7 +457,17 @@ const RoomExpenses = () => {
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-2"><Label>Amount (₹)</Label><Input type="number" value={amount} onChange={e => setAmount(e.target.value)} required /></div>
+                    <div className="space-y-2">
+                      <Label>Amount (₹) {cartItems.length > 0 && <span className="text-[10px] text-muted-foreground">(auto from items)</span>}</Label>
+                      <Input
+                        type="number"
+                        value={amount}
+                        onChange={e => setAmount(e.target.value)}
+                        required
+                        readOnly={cartItems.length > 0}
+                        className={cartItems.length > 0 ? 'bg-muted/50 cursor-not-allowed' : ''}
+                      />
+                    </div>
                     <div className="space-y-2">
                       <Label>Paid By</Label>
                       <Select value={paidBy} onValueChange={v => { setPaidBy(v); if (v !== '_manual') setPaidByManual(''); }}>
@@ -400,6 +499,52 @@ const RoomExpenses = () => {
                       </Button>
                     </CollapsibleTrigger>
                     <CollapsibleContent className="mt-3 space-y-3">
+                      {requiresItems(getEffectiveCategory()) && cartItems.length === 0 && (
+                        <p className="text-xs text-destructive bg-destructive/5 border border-destructive/30 rounded p-2">
+                          ⚠️ At least one item is required for {getEffectiveCategory()} expenses.
+                        </p>
+                      )}
+
+                      {/* Quick-text parser */}
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder='⚡ Quick add: "milk 2 120"'
+                          value={quickText}
+                          onChange={e => setQuickText(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); parseAndAddQuickText(); } }}
+                          className="h-8 text-sm"
+                        />
+                        <Button type="button" size="sm" variant="outline" onClick={parseAndAddQuickText} className="h-8" disabled={!quickText.trim()}>
+                          <Zap className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+
+                      {/* Top 5 frequent quick-add chips */}
+                      {top5Frequent.length > 0 && (
+                        <div>
+                          <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1 flex items-center gap-1">
+                            <Sparkles className="w-3 h-3" /> Frequent — one tap to add
+                          </p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {top5Frequent.map(f => {
+                              const inCart = cartItems.some(ci => ci.name.toLowerCase() === f.name.toLowerCase());
+                              const last = lastPaidMap[f.name.toLowerCase()]?.unitPrice;
+                              return (
+                                <button
+                                  key={f.name}
+                                  type="button"
+                                  disabled={inCart}
+                                  onClick={() => quickAddByName(f.name)}
+                                  className={`text-xs px-2.5 py-1.5 rounded-full border transition-colors ${inCart ? 'bg-primary text-primary-foreground border-primary opacity-60 cursor-default' : 'bg-primary/10 text-foreground border-primary/30 hover:bg-primary/20 cursor-pointer'}`}
+                                >
+                                  + {f.name}{last ? ` · ₹${last}` : ''}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
                       {/* Search & select groceries */}
                       <Input
                         placeholder="Search grocery items..."
