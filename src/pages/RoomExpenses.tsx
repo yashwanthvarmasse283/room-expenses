@@ -340,6 +340,7 @@ const RoomExpenses = () => {
     }
     queryClient.invalidateQueries({ queryKey: ['room_expenses'] });
     queryClient.invalidateQueries({ queryKey: ['purse_transactions'] });
+    queryClient.invalidateQueries({ queryKey: ['expense_items_history'] });
     setOpen(false);
     resetForm();
   };
