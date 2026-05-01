@@ -9,9 +9,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Plus, Pencil, Trash2, Search, Download, ShoppingCart, ChevronDown, X } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, Download, ShoppingCart, ChevronDown, X, Sparkles, Zap } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { enrichItems, buildLastPaidPriceMap, getTopFrequentItems, type RawExpense, type RawItem } from '@/lib/itemAnalytics';
 
 const defaultCategories = ['Food', 'Water', 'Rent', 'Electricity', 'Internet', 'Misc'];
 
