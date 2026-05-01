@@ -440,7 +440,11 @@ const RoomExpenses = () => {
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-2"><Label>Date</Label><Input type="date" value={date} onChange={e => setDate(e.target.value)} required /></div>
                     <div className="space-y-2"><Label>Category</Label>
-                      <Select value={category} onValueChange={v => { setCategory(v); if (v !== '_custom') setCustomCategory(''); }}>
+                      <Select value={category} onValueChange={v => {
+                        setCategory(v);
+                        if (v !== '_custom') setCustomCategory('');
+                        if (requiresItems(v)) setCartOpen(true);
+                      }}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
                           {defaultCategories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
@@ -453,7 +457,17 @@ const RoomExpenses = () => {
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-2"><Label>Amount (₹)</Label><Input type="number" value={amount} onChange={e => setAmount(e.target.value)} required /></div>
+                    <div className="space-y-2">
+                      <Label>Amount (₹) {cartItems.length > 0 && <span className="text-[10px] text-muted-foreground">(auto from items)</span>}</Label>
+                      <Input
+                        type="number"
+                        value={amount}
+                        onChange={e => setAmount(e.target.value)}
+                        required
+                        readOnly={cartItems.length > 0}
+                        className={cartItems.length > 0 ? 'bg-muted/50 cursor-not-allowed' : ''}
+                      />
+                    </div>
                     <div className="space-y-2">
                       <Label>Paid By</Label>
                       <Select value={paidBy} onValueChange={v => { setPaidBy(v); if (v !== '_manual') setPaidByManual(''); }}>
