@@ -44,6 +44,7 @@ const RoomExpenses = () => {
   const [cartOpen, setCartOpen] = useState(false);
   const [grocerySearch, setGrocerySearch] = useState('');
   const [newGroceryItem, setNewGroceryItem] = useState('');
+  const [quickText, setQuickText] = useState('');
 
   const adminId = isAdmin ? profile?.id : profile?.admin_id;
 
@@ -83,6 +84,17 @@ const RoomExpenses = () => {
       if (!adminId) return [];
       const { data } = await supabase.from('groceries').select('*').eq('admin_id', adminId).order('name');
       return data ?? [];
+    },
+    enabled: !!adminId,
+  });
+
+  // For autosuggest / last-paid-price / frequent chips
+  const { data: itemsHistory = [] } = useQuery({
+    queryKey: ['expense_items_history', adminId],
+    queryFn: async () => {
+      if (!adminId) return [];
+      const { data } = await supabase.from('expense_grocery_items').select('id, expense_id, item_name, quantity, unit_price');
+      return (data ?? []) as RawItem[];
     },
     enabled: !!adminId,
   });
