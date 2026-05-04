@@ -489,11 +489,7 @@ const RoomExpenses = () => {
                       </Button>
                     </CollapsibleTrigger>
                     <CollapsibleContent className="mt-3 space-y-3">
-                      {requiresItems(getEffectiveCategory()) && cartItems.length === 0 && (
-                        <p className="text-xs text-destructive bg-destructive/5 border border-destructive/30 rounded p-2">
-                          ⚠️ At least one item is required for {getEffectiveCategory()} expenses.
-                        </p>
-                      )}
+                      {/* Items are optional */}
 
                       {/* Quick-text parser */}
                       <div className="flex gap-2">
