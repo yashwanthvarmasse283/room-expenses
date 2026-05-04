@@ -93,7 +93,7 @@ const RoomExpenses = () => {
     queryKey: ['expense_items_history', adminId],
     queryFn: async () => {
       if (!adminId) return [];
-      const { data } = await supabase.from('expense_grocery_items').select('id, expense_id, item_name, quantity, unit_price');
+      const { data } = await supabase.from('expense_grocery_items').select('id, expense_id, grocery_id, item_name, quantity, unit_price');
       return (data ?? []) as RawItem[];
     },
     enabled: !!adminId,
