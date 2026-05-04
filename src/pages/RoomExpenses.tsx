@@ -645,31 +645,50 @@ const RoomExpenses = () => {
               )}
             </div>
             <div className="space-y-2">
-              {items.map((e: any) => (
+              {items.map((e: any) => {
+                const expItems = (itemsHistory as any[]).filter(it => it.expense_id === e.id);
+                return (
                 <Card key={e.id}>
-                  <CardContent className="flex items-center justify-between p-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-foreground text-sm">{e.description || e.category}</span>
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground">{e.category}</span>
-                      </div>
-                      {e.paid_by && <p className="text-xs text-muted-foreground mt-0.5">Paid by {e.paid_by}</p>}
-                      {(e as any).created_by_name && (e as any).created_by_name !== e.paid_by && (
-                        <p className="text-[10px] text-muted-foreground">Added by {(e as any).created_by_name}</p>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="font-bold text-foreground">₹{Number(e.amount).toLocaleString()}</span>
-                      {canEdit && (
-                        <div className="flex gap-1">
-                          <Button variant="ghost" size="icon" onClick={() => startEdit(e)}><Pencil className="w-4 h-4" /></Button>
-                          <Button variant="ghost" size="icon" onClick={() => remove(e.id)}><Trash2 className="w-4 h-4 text-destructive" /></Button>
+                  <CardContent className="p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-foreground text-sm">{e.description || e.category}</span>
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground">{e.category}</span>
                         </div>
-                      )}
+                        {e.paid_by && <p className="text-xs text-muted-foreground mt-0.5">Paid by {e.paid_by}</p>}
+                        {(e as any).created_by_name && (e as any).created_by_name !== e.paid_by && (
+                          <p className="text-[10px] text-muted-foreground">Added by {(e as any).created_by_name}</p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="font-bold text-foreground">₹{Number(e.amount).toLocaleString()}</span>
+                        {canEdit && (
+                          <div className="flex gap-1">
+                            <Button variant="ghost" size="icon" onClick={() => startEdit(e)}><Pencil className="w-4 h-4" /></Button>
+                            <Button variant="ghost" size="icon" onClick={() => remove(e.id)}><Trash2 className="w-4 h-4 text-destructive" /></Button>
+                          </div>
+                        )}
+                      </div>
                     </div>
+                    {expItems.length > 0 && (
+                      <div className="border-t border-border pt-2">
+                        <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1 flex items-center gap-1">
+                          <ShoppingCart className="w-3 h-3" /> Items ({expItems.length})
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {expItems.map(it => (
+                            <span key={it.id} className="text-xs px-2 py-0.5 rounded bg-muted text-foreground">
+                              {it.item_name} <span className="text-muted-foreground">×{Number(it.quantity)}</span> · ₹{Number(it.unit_price) * Number(it.quantity)}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
-              ))}
+              );
+              })}
             </div>
           </div>
         ))}
