@@ -362,7 +362,15 @@ const RoomExpenses = () => {
       setPaidBy('_manual');
       setPaidByManual(exp.paid_by || '');
     }
-    setCartItems([]);
+    // Prefill cart with existing items
+    const existing = (itemsHistory as any[]).filter(it => it.expense_id === exp.id);
+    setCartItems(existing.map(it => ({
+      groceryId: it.grocery_id || it.id,
+      name: it.item_name,
+      quantity: Number(it.quantity),
+      unitPrice: Number(it.unit_price),
+    })));
+    if (existing.length > 0) setCartOpen(true);
     setOpen(true);
   };
 
