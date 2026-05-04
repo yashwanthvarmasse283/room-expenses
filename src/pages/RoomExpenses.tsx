@@ -93,7 +93,7 @@ const RoomExpenses = () => {
     queryKey: ['expense_items_history', adminId],
     queryFn: async () => {
       if (!adminId) return [];
-      const { data } = await supabase.from('expense_grocery_items').select('id, expense_id, item_name, quantity, unit_price');
+      const { data } = await supabase.from('expense_grocery_items').select('id, expense_id, grocery_id, item_name, quantity, unit_price');
       return (data ?? []) as RawItem[];
     },
     enabled: !!adminId,
@@ -278,17 +278,7 @@ const RoomExpenses = () => {
       return;
     }
 
-    // Enforce itemization for Food/Grocery categories
-    if (requiresItems(effectiveCategory) && cartItems.length === 0) {
-      setCartOpen(true);
-      toast({
-        title: 'Items required',
-        description: `Please add at least one item for "${effectiveCategory}". Use the Items section below.`,
-        variant: 'destructive',
-      });
-      return;
-    }
-    // If items present, the total MUST equal cart total (cannot be manually overridden)
+    // Items are optional. If items present, the total MUST equal cart total (cannot be manually overridden)
     if (cartItems.length > 0 && Number(amount) !== cartTotal) {
       setAmount(String(cartTotal));
     }
@@ -372,7 +362,15 @@ const RoomExpenses = () => {
       setPaidBy('_manual');
       setPaidByManual(exp.paid_by || '');
     }
-    setCartItems([]);
+    // Prefill cart with existing items
+    const existing = (itemsHistory as any[]).filter(it => it.expense_id === exp.id);
+    setCartItems(existing.map(it => ({
+      groceryId: it.grocery_id || it.id,
+      name: it.item_name,
+      quantity: Number(it.quantity),
+      unitPrice: Number(it.unit_price),
+    })));
+    if (existing.length > 0) setCartOpen(true);
     setOpen(true);
   };
 
@@ -499,11 +497,7 @@ const RoomExpenses = () => {
                       </Button>
                     </CollapsibleTrigger>
                     <CollapsibleContent className="mt-3 space-y-3">
-                      {requiresItems(getEffectiveCategory()) && cartItems.length === 0 && (
-                        <p className="text-xs text-destructive bg-destructive/5 border border-destructive/30 rounded p-2">
-                          ⚠️ At least one item is required for {getEffectiveCategory()} expenses.
-                        </p>
-                      )}
+                      {/* Items are optional */}
 
                       {/* Quick-text parser */}
                       <div className="flex gap-2">
@@ -651,31 +645,50 @@ const RoomExpenses = () => {
               )}
             </div>
             <div className="space-y-2">
-              {items.map((e: any) => (
+              {items.map((e: any) => {
+                const expItems = (itemsHistory as any[]).filter(it => it.expense_id === e.id);
+                return (
                 <Card key={e.id}>
-                  <CardContent className="flex items-center justify-between p-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-foreground text-sm">{e.description || e.category}</span>
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground">{e.category}</span>
-                      </div>
-                      {e.paid_by && <p className="text-xs text-muted-foreground mt-0.5">Paid by {e.paid_by}</p>}
-                      {(e as any).created_by_name && (e as any).created_by_name !== e.paid_by && (
-                        <p className="text-[10px] text-muted-foreground">Added by {(e as any).created_by_name}</p>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="font-bold text-foreground">₹{Number(e.amount).toLocaleString()}</span>
-                      {canEdit && (
-                        <div className="flex gap-1">
-                          <Button variant="ghost" size="icon" onClick={() => startEdit(e)}><Pencil className="w-4 h-4" /></Button>
-                          <Button variant="ghost" size="icon" onClick={() => remove(e.id)}><Trash2 className="w-4 h-4 text-destructive" /></Button>
+                  <CardContent className="p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-foreground text-sm">{e.description || e.category}</span>
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground">{e.category}</span>
                         </div>
-                      )}
+                        {e.paid_by && <p className="text-xs text-muted-foreground mt-0.5">Paid by {e.paid_by}</p>}
+                        {(e as any).created_by_name && (e as any).created_by_name !== e.paid_by && (
+                          <p className="text-[10px] text-muted-foreground">Added by {(e as any).created_by_name}</p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="font-bold text-foreground">₹{Number(e.amount).toLocaleString()}</span>
+                        {canEdit && (
+                          <div className="flex gap-1">
+                            <Button variant="ghost" size="icon" onClick={() => startEdit(e)}><Pencil className="w-4 h-4" /></Button>
+                            <Button variant="ghost" size="icon" onClick={() => remove(e.id)}><Trash2 className="w-4 h-4 text-destructive" /></Button>
+                          </div>
+                        )}
+                      </div>
                     </div>
+                    {expItems.length > 0 && (
+                      <div className="border-t border-border pt-2">
+                        <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1 flex items-center gap-1">
+                          <ShoppingCart className="w-3 h-3" /> Items ({expItems.length})
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {expItems.map(it => (
+                            <span key={it.id} className="text-xs px-2 py-0.5 rounded bg-muted text-foreground">
+                              {it.item_name} <span className="text-muted-foreground">×{Number(it.quantity)}</span> · ₹{Number(it.unit_price) * Number(it.quantity)}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
-              ))}
+              );
+              })}
             </div>
           </div>
         ))}
